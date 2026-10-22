@@ -48,7 +48,7 @@ public class DemoActivity extends Activity {
     private void receiveShare(Intent intent) { String setup=intent.getStringExtra("xunji.napcat.setup");if(setup!=null&&setup.length()>=10&&setup.length()<=300)setupToken=setup; if(Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {CharSequence text=intent.getCharSequenceExtra(Intent.EXTRA_TEXT); if(text!=null) sharedText=text.toString();} }
     private void showShare() { if(!pageReady||web==null)return;if(!setupToken.isEmpty()){String token=setupToken;setupToken="";web.evaluateJavascript("prefillNapCatToken("+JSONObject.quote(token)+")",null);} if(!sharedText.isEmpty()) {String text=sharedText;sharedText=""; web.evaluateJavascript("paste("+JSONObject.quote(text)+")",null);} }
     @Override public void onNewIntent(Intent intent) {super.onNewIntent(intent);setIntent(intent);receiveShare(intent);showShare();}
-    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){d.close();return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
+    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){if(document.getElementById('cardForm'))closeEditor();else d.close();return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
     private class Bridge {
         @JavascriptInterface public String snapshot() {
             try { if(visible)AutoExtractService.whileVisible(DemoActivity.this);AutoExtractService.schedule(DemoActivity.this); SelectionStore selection=new SelectionStore(DemoActivity.this);
@@ -57,6 +57,17 @@ public class DemoActivity extends Activity {
                     .put("candidates",selection.candidates()).put("hasKey",new ApiCredential(DemoActivity.this).configured())
                     .put("accessibility",GroupSelectionService.connected).put("notifications",ProbeService.connected).toString();
             } catch(Exception e) { return "{\"error\":\"读取数据失败，请重启应用\"}"; }
+        }
+        @JavascriptInterface public String mutate(String type,String value) {
+            try{
+                JSONObject row=new JSONObject(value);
+                if(type.equals("createCard"))cards.createCard(row);
+                else if(type.equals("updateCard"))cards.updateCard(row);
+                else if(type.equals("card"))cards.cardState(row.getString("id"),row.getString("state"));
+                else throw new IllegalArgumentException("操作不可用");
+                return "{\"ok\":true}";
+            }catch(IllegalArgumentException e){return "{\"ok\":false,\"error\":"+JSONObject.quote(e.getMessage())+"}";}
+            catch(Exception e){return "{\"ok\":false,\"error\":\"保存失败，请重试；原有内容已保留\"}";}
         }
         @JavascriptInterface public void action(String type,String value) {
             runOnUiThread(()-> { try {

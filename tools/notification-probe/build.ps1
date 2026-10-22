@@ -34,10 +34,12 @@ Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.Mess
 Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.NapCatPolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\tests\ExtractionPolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.ExtractionPolicyTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\tests\CardPolicyTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.CardPolicyTest')
 Invoke-Checked "$toolsDir\aapt2.exe" @('compile', '--dir', "$probeRoot\res", '-o', "$buildDir\resources.zip")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
-    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '18',
-    '--version-name', '0.17-empty-result-fix', "$buildDir\resources.zip")
+    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '19',
+    '--version-name', '0.18-card-management', "$buildDir\resources.zip")
 $sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen" -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 Invoke-Checked $javaCompiler (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options',

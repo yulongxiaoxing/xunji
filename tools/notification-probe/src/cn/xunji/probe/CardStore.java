@@ -15,21 +15,27 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 2); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 3); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
-        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT)");
+        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT)");
         db.execSQL("CREATE INDEX cards_source ON cards(source_id)");
         createCache(db);
     }
     private void createCache(SQLiteDatabase db){db.execSQL("CREATE TABLE IF NOT EXISTS extraction_cache(content_key TEXT PRIMARY KEY, version INTEGER NOT NULL, cards TEXT NOT NULL)");}
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if(oldVersion<2){db.execSQL("ALTER TABLE sources ADD COLUMN extraction_version INTEGER NOT NULL DEFAULT 0");createCache(db);}
+        if(oldVersion<3){
+            db.execSQL("ALTER TABLE cards ADD COLUMN user_modified INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE cards ADD COLUMN extraction_title TEXT");
+            db.execSQL("ALTER TABLE cards ADD COLUMN previous_state TEXT");
+            db.execSQL("UPDATE cards SET extraction_title=title");
+        }
     }
     @Override public void onOpen(SQLiteDatabase db){
         super.onOpen(db);
         if(!db.isReadOnly()){
-            db.execSQL("UPDATE sources SET state='pending',error='' WHERE state='ready' AND extraction_version<?",new Object[]{ExtractionPolicy.VERSION});
+            db.execSQL("UPDATE sources SET state='pending',error='' WHERE state='ready' AND extraction_version<? AND id NOT LIKE 'manual-card:%'",new Object[]{ExtractionPolicy.VERSION});
             // Recover the old empty-result error once under the corrected rules.
             db.execSQL("UPDATE sources SET state='pending',error='',extraction_version=? WHERE state='error' AND error=? AND extraction_version<?",new Object[]{ExtractionPolicy.VERSION,"模型返回的事项数量不正确，请重试",ExtractionPolicy.VERSION});
         }
@@ -81,7 +87,7 @@ final class CardStore extends SQLiteOpenHelper {
                 row.put("category", string(c, "category")); row.put("title", string(c, "title"));
                 row.put("requirements", new JSONArray(string(c, "requirements"))); row.put("deadline", string(c, "deadline"));
                 row.put("status", string(c, "state")); row.put("receivedAt", c.getLong(c.getColumnIndexOrThrow("received")));
-                row.put("demo", false); rows.put(row);
+                row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
             }
         }
         return rows;
@@ -98,31 +104,73 @@ final class CardStore extends SQLiteOpenHelper {
         ContentValues value=new ContentValues();value.put("state","pending");value.put("error","");
         getWritableDatabase().update("sources",value,"state=?",new String[]{"error"});
     }
-    void cardState(String id, String state) {
-        if (!state.equals("inbox") && !state.equals("todo") && !state.equals("done") && !state.equals("ignored")) return;
-        ContentValues value = new ContentValues(); value.put("state", state);
-        getWritableDatabase().update("cards", value, "id=?", new String[]{id});
+    synchronized void cardState(String id, String state) {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try(Cursor c=db.rawQuery("SELECT state,previous_state FROM cards WHERE id=?",new String[]{id})){
+            if(!c.moveToFirst())throw new IllegalArgumentException("事项不存在，请刷新后重试");
+            String current=c.getString(0);ContentValues value=new ContentValues();
+            if("restore".equals(state)){
+                if(!"deleted".equals(current))throw new IllegalArgumentException("事项不在回收站");
+                value.put("state",CardPolicy.restoreState(c.getString(1)));
+            }else{
+                value.put("state",CardPolicy.transition(current,state));
+                if("deleted".equals(state))value.put("previous_state",current);
+            }
+            // A deliberate decision protects this card even after restoring to inbox.
+            value.put("user_modified",1);
+            db.update("cards",value,"id=?",new String[]{id});db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
-    void replaceCards(String sourceId, JSONArray cards) throws Exception {
+    private ContentValues editedValues(JSONObject row) throws Exception {
+        String title=row.optString("title").trim(),category=row.optString("category"),deadline=row.optString("deadline").trim();
+        JSONArray input=row.getJSONArray("requirements"),cleaned=new JSONArray();List<String> requirements=new ArrayList<>();
+        for(int i=0;i<input.length();i++){String line=input.getString(i).trim();if(!line.isEmpty()){requirements.add(line);cleaned.put(line);}}
+        CardPolicy.validate(title,category,requirements,deadline);
+        ContentValues value=new ContentValues();value.put("title",title);value.put("category",category);
+        value.put("requirements",cleaned.toString());value.put("deadline",deadline);value.put("user_modified",1);return value;
+    }
+    synchronized void updateCard(JSONObject row) throws Exception {
+        ContentValues value=editedValues(row);
+        if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)
+            throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
+    }
+    synchronized String createCard(JSONObject row) throws Exception {
+        ContentValues value=editedValues(row);String sourceId="manual-card:"+UUID.randomUUID().toString(),id=UUID.randomUUID().toString();
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try{
+            StringBuilder manualBody=new StringBuilder(value.getAsString("title"));
+            JSONArray lines=new JSONArray(value.getAsString("requirements"));for(int i=0;i<lines.length();i++)manualBody.append("\n").append(lines.getString(i));
+            if(!value.getAsString("deadline").isEmpty())manualBody.append("\n").append(value.getAsString("deadline"));String body=manualBody.toString();
+            if(!insertSource(sourceId,"手动新建","",body,System.currentTimeMillis()))throw new IllegalStateException("新建失败");
+            state(sourceId,"ready","");value.put("id",id);value.put("source_id",sourceId);value.put("state","todo");
+            value.put("extraction_title",row.getString("title"));
+            if(db.insert("cards",null,value)<0)throw new IllegalStateException("新建失败");
+            db.setTransactionSuccessful();return id;
+        }finally{db.endTransaction();}
+    }
+    synchronized void replaceCards(String sourceId, JSONArray cards) throws Exception {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try {
             List<PreviousCard> previous=new ArrayList<>();
-            try(Cursor old=db.rawQuery("SELECT id,title,state FROM cards WHERE source_id=? ORDER BY rowid",new String[]{sourceId})){
-                while(old.moveToNext())previous.add(new PreviousCard(old.getString(0),old.getString(1),old.getString(2)));
+            try(Cursor old=db.rawQuery("SELECT id,COALESCE(extraction_title,title),state,user_modified FROM cards WHERE source_id=? ORDER BY rowid",new String[]{sourceId})){
+                while(old.moveToNext())previous.add(new PreviousCard(old.getString(0),old.getString(1),old.getString(2),old.getInt(3)!=0));
             }
             // Retain unmatched actionable cards rather than silently resetting a user's tasks.
-            db.delete("cards", "source_id=? AND state='inbox'", new String[]{sourceId});
+
             List<String> oldTitles=new ArrayList<>(),newTitles=new ArrayList<>();
             for(PreviousCard old:previous)oldTitles.add(old.title);
             for(int i=0;i<cards.length();i++)newTitles.add(cards.getJSONObject(i).getString("title"));
-            for (int i = 0; i < cards.length(); i++) {
+            List<Boolean> protectedCards=new ArrayList<>();for(PreviousCard old:previous)protectedCards.add(old.modified||!"inbox".equals(old.state));
+            boolean freeze=CardPolicy.preserveSource(oldTitles,newTitles,protectedCards);
+            if(!freeze)db.delete("cards", "source_id=? AND state='inbox' AND user_modified=0", new String[]{sourceId});
+            for (int i = 0; i < cards.length() && !freeze; i++) {
                 JSONObject row = cards.getJSONObject(i); ContentValues value = new ContentValues();
                 PreviousCard match=null;
                 int previousIndex=ExtractionPolicy.previousCardIndex(oldTitles,newTitles,i);
                 if(previousIndex>=0)match=previous.get(previousIndex);
-                if(match!=null)match.used=true;
-                value.put("id",match==null?sourceId+":v"+ExtractionPolicy.VERSION+":"+i:match.id);
-                value.put("source_id", sourceId); value.put("category", row.getString("category"));
+                if(match!=null && (match.modified||!"inbox".equals(match.state)))continue;
+                value.put("id",match==null?UUID.randomUUID().toString():match.id);
+                value.put("extraction_title",row.getString("title")); value.put("source_id", sourceId); value.put("category", row.getString("category"));
                 value.put("title", row.getString("title")); value.put("requirements", row.getJSONArray("requirements").toString());
                 value.put("deadline", row.optString("deadline", "")); value.put("state",match==null?"inbox":match.state);
                 if(db.insertWithOnConflict("cards",null,value,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("事项保存失败，原文已保留");
@@ -141,8 +189,8 @@ final class CardStore extends SQLiteOpenHelper {
         }catch(Exception ignored){}return null;
     }
     private static final class PreviousCard{
-        final String id,title,state;boolean used;
-        PreviousCard(String id,String title,String state){this.id=id;this.title=title;this.state=state;}
+        final String id,title,state;final boolean modified;
+        PreviousCard(String id,String title,String state,boolean modified){this.id=id;this.title=title;this.state=state;this.modified=modified;}
     }
     static String digest(String text) {
         try {
