@@ -17,7 +17,7 @@ const {pathToFileURL}=require('node:url'),path=require('node:path');let browser;
  check((await page.locator('.upcoming-list').innerText()).includes('三天后比赛'),'future seven days');
  check(!(await page.locator('.today-list').innerText()).includes('尚未确认日期'),'unknown date not guessed');
  await page.screenshot({path:path.resolve(__dirname,'../../build/today-home.png'),fullPage:true});
- await button('打开信息与待办').click();check(await page.getByRole('navigation',{name:'信息与待办功能'}).count()===1,'legacy functions inside workspace');
+ await button('信息与待办').click();check(await page.getByRole('navigation',{name:'信息与待办功能'}).count()===1,'legacy functions inside workspace');
  for(const label of ['收件箱','待办','关注群','设置']){await button(label).click();check((await page.locator('#nav').innerText()).includes('日程'),'primary nav retained');}
  await button('今日').click();await button('查看事项：尚未确认日期').click();await button('更多操作').click();await button('编辑事项').click();await page.getByText('调整截止日期与时间（可选）',{exact:true}).click();await page.getByLabel('截止日期',{exact:true}).fill('2026-10-22');await page.getByLabel('截止时刻',{exact:true}).fill('20:00');await button('保存修改').click();check((await page.locator('.today-list').innerText()).includes('尚未确认日期'),'date edit appears today');
  await button('日程').click();check(await page.locator('.agenda-item').count()===2,'day schedule only unfinished');await page.getByLabel('显示已完成事项').check();check(await page.locator('.agenda-item').count()===3,'done optional');

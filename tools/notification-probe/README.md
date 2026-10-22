@@ -1,6 +1,6 @@
 # 寻迹 Android 演示原型
 
-当前版本：`21 / 0.20-auto-deadline`，`ExtractionPolicy.VERSION=5`。项目从早期通知/群名浮层验证发展为电脑 NapCat 接入、手机按群号关注、DeepSeek 自动提取的任务卡片演示。最新状态以 [交接文档](../../docs/HANDOFF.md) 为准。
+当前版本：`22 / 0.21-compact-today`，`ExtractionPolicy.VERSION=5`。项目从早期通知/群名浮层验证发展为电脑 NapCat 接入、手机按群号关注、DeepSeek 自动提取的任务卡片演示。最新状态以 [交接文档](../../docs/HANDOFF.md) 为准。
 
 ## 构建与安装
 
