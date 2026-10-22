@@ -15,10 +15,10 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 3); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 4); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
-        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT)");
+        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE INDEX cards_source ON cards(source_id)");
         createCache(db);
     }
@@ -30,6 +30,10 @@ final class CardStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE cards ADD COLUMN extraction_title TEXT");
             db.execSQL("ALTER TABLE cards ADD COLUMN previous_state TEXT");
             db.execSQL("UPDATE cards SET extraction_title=title");
+        }
+        if(oldVersion<4){
+            db.execSQL("ALTER TABLE cards ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE cards ADD COLUMN due_time TEXT NOT NULL DEFAULT ''");
         }
     }
     @Override public void onOpen(SQLiteDatabase db){
@@ -87,7 +91,7 @@ final class CardStore extends SQLiteOpenHelper {
                 row.put("category", string(c, "category")); row.put("title", string(c, "title"));
                 row.put("requirements", new JSONArray(string(c, "requirements"))); row.put("deadline", string(c, "deadline"));
                 row.put("status", string(c, "state")); row.put("receivedAt", c.getLong(c.getColumnIndexOrThrow("received")));
-                row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
+                row.put("dueDate",string(c,"due_date"));row.put("dueTime",string(c,"due_time")); row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
             }
         }
         return rows;
@@ -127,11 +131,22 @@ final class CardStore extends SQLiteOpenHelper {
         for(int i=0;i<input.length();i++){String line=input.getString(i).trim();if(!line.isEmpty()){requirements.add(line);cleaned.put(line);}}
         CardPolicy.validate(title,category,requirements,deadline);
         ContentValues value=new ContentValues();value.put("title",title);value.put("category",category);
-        value.put("requirements",cleaned.toString());value.put("deadline",deadline);value.put("user_modified",1);return value;
+        value.put("requirements",cleaned.toString());value.put("deadline",deadline);value.put("user_modified",1);
+        if(row.has("dueDate")||row.has("dueTime")){
+            String date=row.optString("dueDate"),time=row.optString("dueTime");SchedulePolicy.validate(date,time);
+            value.put("due_date",date);value.put("due_time",time);
+        }
+        return value;
     }
     synchronized void updateCard(JSONObject row) throws Exception {
         ContentValues value=editedValues(row);
         if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)
+            throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
+    }
+    synchronized void setSchedule(String id,String date,String time){
+        SchedulePolicy.validate(date,time);ContentValues value=new ContentValues();
+        value.put("due_date",date);value.put("due_time",time);value.put("user_modified",1);
+        if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{id})!=1)
             throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
     }
     synchronized String createCard(JSONObject row) throws Exception {

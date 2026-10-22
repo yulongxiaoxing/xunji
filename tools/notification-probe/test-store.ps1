@@ -8,7 +8,7 @@ $platformJar=Get-ChildItem (Join-Path $SdkRoot 'platforms') -Filter android.jar 
 $env:JAVA_HOME=Split-Path (Split-Path (Get-Command javac.exe).Source)
 function Invoke-Checked([string]$File,[string[]]$Arguments){& $File @Arguments;if($LASTEXITCODE -ne 0){throw "$File failed: $LASTEXITCODE"}}
 New-Item -ItemType Directory -Force "$buildDir\classes","$buildDir\dex" | Out-Null
-Invoke-Checked javac @('-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-classpath',$platformJar,'-d',"$buildDir\classes","$probeRoot\src\cn\xunji\probe\CardStore.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\tests\StoreInstrumentation.java")
+Invoke-Checked javac @('-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-classpath',$platformJar,'-d',"$buildDir\classes","$probeRoot\src\cn\xunji\probe\CardStore.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\src\cn\xunji\probe\SchedulePolicy.java","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\tests\StoreInstrumentation.java")
 Invoke-Checked jar @('cf',"$buildDir\classes.jar",'-C',"$buildDir\classes",'.')
 Invoke-Checked "$toolsDir\d8.bat" @('--lib',$platformJar,'--min-api','28','--output',"$buildDir\dex","$buildDir\classes.jar")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link','-o',"$buildDir\unsigned.apk",'-I',$platformJar,'--manifest',"$probeRoot\tests\AndroidManifest.xml")

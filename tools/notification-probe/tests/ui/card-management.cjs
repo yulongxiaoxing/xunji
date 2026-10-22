@@ -15,6 +15,7 @@ const {pathToFileURL}=require('node:url');const path=require('node:path');let br
   }};
  });
  await page.goto(pathToFileURL(path.resolve(__dirname,'../../assets/index.html')).href);
+ await page.getByRole('button',{name:'信息与待办',exact:true}).click();
  const check=(v,m)=>{if(!v)throw Error(m)};
  await page.screenshot({path:path.resolve(__dirname,'../../build/card-management-inbox.png'),fullPage:true});
  const button=(name)=>page.getByRole('button',{name,exact:true});

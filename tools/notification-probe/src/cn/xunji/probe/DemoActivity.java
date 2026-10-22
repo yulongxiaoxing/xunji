@@ -63,6 +63,7 @@ public class DemoActivity extends Activity {
                 JSONObject row=new JSONObject(value);
                 if(type.equals("createCard"))cards.createCard(row);
                 else if(type.equals("updateCard"))cards.updateCard(row);
+                else if(type.equals("schedule"))cards.setSchedule(row.getString("id"),row.optString("dueDate"),row.optString("dueTime"));
                 else if(type.equals("card"))cards.cardState(row.getString("id"),row.getString("state"));
                 else throw new IllegalArgumentException("操作不可用");
                 return "{\"ok\":true}";

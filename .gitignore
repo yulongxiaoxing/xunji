@@ -25,3 +25,6 @@ local-secrets.json
 account.json
 process.json
 /第一版初步.docx
+
+# Office temporary lock files
+~$*.docx

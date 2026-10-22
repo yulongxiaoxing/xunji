@@ -39,6 +39,22 @@ public class StoreInstrumentation extends Instrumentation {
   old.execSQL("INSERT INTO sources VALUES('s','群','发布人','旧完整原文',1,'ready','',5)");old.execSQL("INSERT INTO cards VALUES('c','s','作业','旧标题','[]','','ignored')");old.setVersion(2);old.close();store=new CardStore(context);
   check(card("c").getString("title").equals("旧标题"),"v2 migrated title");check(card("c").getString("status").equals("ignored"),"v2 state preserved");
   store.replaceCards("s",new JSONArray().put(row("新标题")));check(card("c").getString("status").equals("ignored"),"migrated ignored preserved");check(store.source("s").getString("text").equals("旧完整原文"),"migration original preserved");
+  check(card("c").getString("dueDate").equals(""),"legacy card date stays unknown");
+  String scheduled=store.createCard(row("日程测试"));store.setSchedule(scheduled,"2026-12-31","23:59");
+  check(card(scheduled).getString("dueDate").equals("2026-12-31"),"date persisted");check(card(scheduled).getString("dueTime").equals("23:59"),"time persisted");
+  store.updateCard(row("日程标题修改").put("id",scheduled));check(card(scheduled).getString("dueDate").equals("2026-12-31"),"content edit retains date when omitted");
+  store.close();store=new CardStore(context);check(card(scheduled).getString("dueDate").equals("2026-12-31"),"date survives restart");
+  try{store.setSchedule(scheduled,"2026-02-29","");throw new AssertionError("invalid calendar date accepted");}catch(IllegalArgumentException expected){check(card(scheduled).getString("dueDate").equals("2026-12-31"),"invalid date update atomic");}
+  store.setSchedule(scheduled,"","");check(card(scheduled).getString("dueDate").equals(""),"date cleared");
+  store.cardState(scheduled,"deleted");try{store.setSchedule(scheduled,"2026-10-22","");throw new AssertionError("deleted schedule edited");}catch(IllegalArgumentException expected){check(card(scheduled).getString("dueDate").equals(""),"deleted cannot reschedule");}
+  store.close();context.deleteDatabase("xunji-cards.db");
+  SQLiteDatabase v3=context.openOrCreateDatabase("xunji-cards.db",0,null);
+  v3.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY,group_name TEXT NOT NULL,publisher TEXT NOT NULL,body TEXT NOT NULL,received INTEGER,state TEXT,error TEXT,extraction_version INTEGER NOT NULL DEFAULT 0)");
+  v3.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY,source_id TEXT NOT NULL,category TEXT,title TEXT,requirements TEXT,deadline TEXT,state TEXT,user_modified INTEGER NOT NULL DEFAULT 0,extraction_title TEXT,previous_state TEXT)");
+  v3.execSQL("CREATE TABLE extraction_cache(content_key TEXT PRIMARY KEY,version INTEGER NOT NULL,cards TEXT NOT NULL)");
+  v3.execSQL("INSERT INTO sources VALUES('v3s','群','发布人','v3原文',1,'ready','',5)");v3.execSQL("INSERT INTO cards VALUES('v3c','v3s','作业','人工编辑的标题','[]','','deleted',1,'旧AI标题','done')");v3.setVersion(3);v3.close();store=new CardStore(context);
+  check(card("v3c").getString("dueDate").equals(""),"v3 migrated unknown date");check(card("v3c").getString("title").equals("人工编辑的标题"),"v3 manual content retained");store.cardState("v3c","restore");check(card("v3c").getString("status").equals("done"),"v3 delete restore state retained");
+  store.setSchedule("v3c","2026-10-22","");store.replaceCards("v3s",new JSONArray().put(row("重算的标题")));check(card("v3c").getString("dueDate").equals("2026-10-22"),"schedule protected from extraction");check(store.source("v3s").getString("text").equals("v3原文"),"scheduling preserves original");
   store.close();context.deleteDatabase("xunji-cards.db");result.putString("stream","PASS: "+assertions+" Android SQLite lifecycle, re-extraction, persistence and v2 migration assertions\n");finish(Activity.RESULT_OK,result);
  }catch(Throwable e){result.putString("stream","FAIL: "+e.toString());finish(Activity.RESULT_CANCELED,result);}}
 }
