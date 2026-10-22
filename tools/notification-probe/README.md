@@ -1,6 +1,6 @@
 # 寻迹 Android 演示原型
 
-当前版本：`23 / 0.22-wakeup-courses`，`ExtractionPolicy.VERSION=5`。项目支持电脑NapCat接入、手机按群号关注、DeepSeek自动提取和每日课程。WakeUp新版口令目前遇到服务端版本限制，文件入口与课程功能已接入，真实课表尚待验证。最新状态以 [交接文档](../../docs/HANDOFF.md) 为准。
+当前版本：`24 / 0.23-ics-courses`，`ExtractionPolicy.VERSION=5`。项目支持电脑NapCat接入、手机按群号关注、DeepSeek自动提取和每日课程。WakeUp新版口令目前遇到服务端版本限制，文件入口与课程功能已接入，真实课表尚待验证。最新状态以 [交接文档](../../docs/HANDOFF.md) 为准。
 
 ## 构建与安装
 

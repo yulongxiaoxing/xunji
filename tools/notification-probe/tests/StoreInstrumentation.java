@@ -94,6 +94,21 @@ public class StoreInstrumentation extends Instrumentation {
   JSONObject another=WakeupImport.parse(rawCourse.replace("模拟电子技术","大学物理"));check(store.importCourses(another).getInt("added")==2,"different names with same export-local ID are not lost");
   try{store.importCourses(WakeupImport.parse(rawCourse.replace("测试老师","另一老师")));throw new AssertionError("conflicting identity silently ignored");}catch(IllegalArgumentException expected){assertions++;}
 
+  String ics="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ics-test-1\r\nSUMMARY:电子技术\r\nDTSTART;TZID=Asia/Shanghai:20261023T080000\r\nDTEND;TZID=Asia/Shanghai:20261023T094000\r\nLOCATION:教学楼A101\r\nDESCRIPTION:老师：测试老师\\n完整课程说明\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\nEXDATE;TZID=Asia/Shanghai:20261030T080000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+  JSONObject ip=IcsImport.parse(ics);check(ip.getJSONArray("sessions").length()==2,"ICS weekly count and exclusion");
+  JSONObject ic=ip.getJSONArray("sessions").getJSONObject(0).getJSONObject("course");check(ic.getString("teacher").equals("测试老师")&&ic.getString("endTime").equals("09:40"),"ICS teacher and end time");
+  check(ic.getString("description").contains("完整课程说明"),"ICS description intact");check(store.importCourses(ip).getInt("added")==2&&store.importCourses(ip).getInt("added")==0,"ICS store and idempotence");
+  check(IcsImport.parse(ics.replace("20261023T080000","20261023T000000Z").replace("DTSTART;TZID=Asia/Shanghai","DTSTART")).getJSONArray("sessions").length()==2,"ICS UTC converted to local time");
+  check(IcsImport.parse(ics.replace("20261023T080000","20261023T000000Z").replace("DTSTART;TZID=Asia/Shanghai","DTSTART")).getJSONArray("sessions").getJSONObject(0).getJSONObject("course").getString("startTime").equals("08:00"),"ICS UTC actually converts to China time");
+  check(IcsImport.parse(ics.replace("SUMMARY:电子技术","SUMMARY:电子\r\n 技术")).getJSONArray("meetings").getJSONObject(0).getString("name").equals("电子技术"),"ICS folded text lines");
+  check(IcsImport.parse(ics.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;UNTIL=20261106T000000Z")).getJSONArray("sessions").length()==2,"ICS inclusive UNTIL");
+  check(IcsImport.parse(ics.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE;TZID=Asia/Shanghai:20261106T080000")).getJSONArray("sessions").length()==2,"ICS explicit extra date");
+  check(IcsImport.parse(ics.replace("FREQ=WEEKLY;COUNT=3", "FREQ=WEEKLY;COUNT=3;INTERVAL=2;BYDAY=FR")).getJSONArray("sessions").getJSONObject(1).getString("date").equals("2026-11-06"),"ICS biweekly dates");
+  try{IcsImport.parse(ics.replace("FREQ=WEEKLY;COUNT=3","FREQ=DAILY;UNTIL=20361023T000000Z"));throw new AssertionError("overlong recurrence truncated");}catch(IllegalArgumentException expected){assertions++;}
+  String dstIcs=ics.replace("Asia/Shanghai","America/New_York").replace("20261023T080000","20260302T023000").replace("20261023T094000","20260302T033000").replace("FREQ=WEEKLY;COUNT=3","FREQ=WEEKLY;COUNT=2;BYDAY=MO");
+  check(IcsImport.parse(dstIcs).getJSONArray("sessions").length()==2,"unselected DST Sunday does not reject Monday classes");
+  try{IcsImport.parse(ics.replace("FREQ=WEEKLY;COUNT=3","FREQ=MONTHLY;COUNT=3"));throw new AssertionError("unsupported recurrence silently accepted");}catch(IllegalArgumentException expected){assertions++;}
+  try{IcsImport.parse(ics.replace("20261023T094000","20261024T094000"));throw new AssertionError("cross-day class truncated");}catch(IllegalArgumentException expected){assertions++;}
   store.close();context.deleteDatabase("xunji-cards.db");result.putString("stream","PASS: "+assertions+" Android SQLite lifecycle, re-extraction, persistence and v2 migration assertions\n");finish(Activity.RESULT_OK,result);
  }catch(Throwable e){result.putString("stream","FAIL: "+e.toString());finish(Activity.RESULT_CANCELED,result);}}
 }

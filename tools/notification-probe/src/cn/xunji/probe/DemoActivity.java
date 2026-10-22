@@ -76,8 +76,9 @@ public class DemoActivity extends Activity {
         new Thread(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
             if(in==null)throw new IllegalArgumentException("无法读取课表文件");byte[] buffer=new byte[4096];int n;
             while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>2000000)throw new IllegalArgumentException("课表文件过大，未导入");}
-            wakeupResult(revision,WakeupImport.parse(new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8)),"");
-        }catch(IllegalArgumentException e){wakeupResult(revision,null,e.getMessage());}catch(Exception e){wakeupResult(revision,null,"此文件无法完整识别为WakeUp课表，未导入");}},"xunji-wakeup-file").start();
+            String content=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);
+            wakeupResult(revision,content.replaceFirst("^\uFEFF", "").trim().startsWith("BEGIN:VCALENDAR")?IcsImport.parse(content):WakeupImport.parse(content),"");
+        }catch(IllegalArgumentException e){wakeupResult(revision,null,e.getMessage());}catch(Exception e){wakeupResult(revision,null,"此文件无法完整识别为ICS或WakeUp课表，未导入");}},"xunji-wakeup-file").start();
     }
     private class Bridge {
         @JavascriptInterface public String snapshot() {
