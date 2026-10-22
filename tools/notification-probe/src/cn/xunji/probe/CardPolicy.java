@@ -12,7 +12,7 @@ final class CardPolicy {
     static String restoreState(String previous){return STATES.contains(previous)?previous:"inbox";}
     static void validate(String title,String category,List<String> requirements,String deadline){
         if(title.trim().isEmpty()||title.length()>300)throw new IllegalArgumentException("标题请填写1至300字");
-        if(!Arrays.asList("作业","考试","竞赛","活动","其他").contains(category))throw new IllegalArgumentException("请选择有效分类");
+        if(!Arrays.asList("作业","考试","竞赛","活动","课程","其他").contains(category))throw new IllegalArgumentException("请选择有效分类");
         if(deadline.length()>500)throw new IllegalArgumentException("时间信息请控制在500字内");
         int length=0;for(String line:requirements)length+=line.length();
         if(length>50000)throw new IllegalArgumentException("具体要求请控制在50000字内");

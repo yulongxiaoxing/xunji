@@ -69,7 +69,7 @@ public class StoreInstrumentation extends Instrumentation {
   v4.execSQL("INSERT INTO cards(id,source_id,title,category,requirements,deadline,state,user_modified,extraction_title) VALUES('old-auto-c','old-auto','旧自动','作业','[]','2026年10月25日18:00','todo',1,'旧自动')");
   v4.execSQL("INSERT INTO cards(id,source_id,title,category,requirements,deadline,state,user_modified,extraction_title,due_date,due_time) VALUES('old-override','old-auto','旧手动','作业','[]','2026年10月25日18:00','done',1,'旧手动','2026-10-24','16:00')");
   // Simulate the actual v4 schema by dropping the new override column before opening.
-  v4.execSQL("ALTER TABLE cards DROP COLUMN schedule_override");v4.setVersion(4);v4.close();store.close();store=new CardStore(context);
+  v4.execSQL("ALTER TABLE cards DROP COLUMN course_data");v4.execSQL("ALTER TABLE cards DROP COLUMN schedule_override");v4.setVersion(4);v4.close();store.close();store=new CardStore(context);
   check(card("old-auto-c").getString("dueDate").equals("2026-10-25"),"v4 todo backfills despite generic user_modified");check(card("old-auto-c").getString("status").equals("todo"),"backfill preserves state");check(card("old-override").getString("dueDate").equals("2026-10-24"),"v4 manual date preserved");
   String relativeA=store.addManual("群","老师","明天18点前"),relativeB=store.addManual("群","老师","明天18点前");
   long anchor=java.time.LocalDate.of(2026,10,22).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
@@ -77,6 +77,23 @@ public class StoreInstrumentation extends Instrumentation {
   JSONArray relativeRows=new JSONArray().put(row("同正文任务").put("deadline","明天18点前"));store.replaceCards(relativeA,relativeRows);store.replaceCards(relativeB,store.cachedExtraction("明天18点前"));
   JSONArray relativeCards=store.cards();String aDate="",bDate="";for(int i=0;i<relativeCards.length();i++){JSONObject c=relativeCards.getJSONObject(i);if(c.getString("sourceId").equals(relativeA))aDate=c.getString("dueDate");if(c.getString("sourceId").equals(relativeB))bDate=c.getString("dueDate");}
   check(aDate.equals("2026-10-23"),"relative deadline uses original receipt date");check(bDate.equals("2026-10-24"),"cache reuse recomputes relative date per source");
+  String rawCourse="{}\n[{\"node\":1,\"startTime\":\"08:00\",\"endTime\":\"08:45\"},{\"node\":2,\"startTime\":\"08:55\",\"endTime\":\"09:40\"}]\n{\"startDate\":\"2026-10-19\",\"tableName\":\"测试学期\"}\n[{\"id\":1,\"courseName\":\"模拟电子技术\",\"teacher\":\"测试老师\"}]\n[{\"id\":1,\"day\":5,\"startNode\":1,\"step\":2,\"startWeek\":1,\"endWeek\":4,\"type\":1,\"room\":\"教学楼A101\"}]";
+  JSONObject coursePreview=WakeupImport.parse(rawCourse);check(coursePreview.getJSONArray("sessions").length()==2,"odd weeks create exact occurrences");
+  JSONObject courseInfo=coursePreview.getJSONArray("sessions").getJSONObject(0).getJSONObject("course");check(courseInfo.getString("startTime").equals("08:00")&&courseInfo.getString("endTime").equals("09:40"),"course interval complete");check(courseInfo.getString("teacher").equals("测试老师")&&courseInfo.getString("location").equals("教学楼A101"),"teacher and room retained");
+  JSONObject imported=store.importCourses(coursePreview);check(imported.getInt("added")==2,"course occurrences added");String courseId=coursePreview.getJSONArray("sessions").getJSONObject(0).getString("id");check(card(courseId).getString("category").equals("课程"),"course category");check(card(courseId).getJSONObject("course").getString("endTime").equals("09:40"),"stored course end preserved");
+  store.cardState(courseId,"done");check(store.importCourses(coursePreview).getInt("added")==0,"repeat import idempotent");check(card(courseId).getString("status").equals("done"),"repeat import preserves completion");store.cardState(courseId,"deleted");store.importCourses(coursePreview);check(card(courseId).getString("status").equals("deleted"),"repeat import no resurrection");
+  try{WakeupImport.parse(rawCourse.replace("\"node\":2","\"node\":3"));throw new AssertionError("missing slot silently skipped");}catch(IllegalArgumentException expected){assertions++;}
+  check(store.source(card(courseId).getString("sourceId")).getString("text").equals(rawCourse),"entire timetable source preserved");
+  String editedCourse=coursePreview.getJSONArray("sessions").getJSONObject(1).getString("id");JSONObject editCourseData=card(editedCourse).getJSONObject("course");editCourseData.put("teacher","编辑后的老师").put("location","实验楼B202");
+  store.updateCard(row("模拟电子技术").put("id",editedCourse).put("category","课程").put("course",editCourseData).put("dueDate",card(editedCourse).getString("dueDate")).put("dueTime","08:00"));check(card(editedCourse).getJSONObject("course").getString("teacher").equals("编辑后的老师"),"structured course edit retained");
+  store.updateCard(row("保留用户改分类").put("id",editedCourse).put("category","其他"));check(store.importCourses(coursePreview).getInt("added")==0,"reimport preserves recategorized occurrence");check(card(editedCourse).getString("category").equals("其他"),"category decision preserved");
+
+  try{WakeupImport.parse(rawCourse+"\n{}");throw new AssertionError("unknown extra sections accepted");}catch(IllegalArgumentException expected){assertions++;}
+  JSONObject irregular=WakeupImport.parse(rawCourse.replace("\"type\":1","\"type\":0,\"stepWeekList\":[1,4]"));check(irregular.getJSONArray("sessions").getJSONObject(1).getString("date").equals("2026-11-13"),"irregular active week list is respected");
+  JSONObject fallbackTeacher=WakeupImport.parse(rawCourse.replace("\"room\":","\"teacher\":\"\",\"room\":"));check(fallbackTeacher.getJSONArray("meetings").getJSONObject(0).getString("teacher").equals("测试老师"),"blank detail teacher keeps known base teacher");
+  JSONObject another=WakeupImport.parse(rawCourse.replace("模拟电子技术","大学物理"));check(store.importCourses(another).getInt("added")==2,"different names with same export-local ID are not lost");
+  try{store.importCourses(WakeupImport.parse(rawCourse.replace("测试老师","另一老师")));throw new AssertionError("conflicting identity silently ignored");}catch(IllegalArgumentException expected){assertions++;}
+
   store.close();context.deleteDatabase("xunji-cards.db");result.putString("stream","PASS: "+assertions+" Android SQLite lifecycle, re-extraction, persistence and v2 migration assertions\n");finish(Activity.RESULT_OK,result);
  }catch(Throwable e){result.putString("stream","FAIL: "+e.toString());finish(Activity.RESULT_CANCELED,result);}}
 }

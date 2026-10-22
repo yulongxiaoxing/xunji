@@ -48,7 +48,37 @@ public class DemoActivity extends Activity {
     private void receiveShare(Intent intent) { String setup=intent.getStringExtra("xunji.napcat.setup");if(setup!=null&&setup.length()>=10&&setup.length()<=300)setupToken=setup; if(Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {CharSequence text=intent.getCharSequenceExtra(Intent.EXTRA_TEXT); if(text!=null) sharedText=text.toString();} }
     private void showShare() { if(!pageReady||web==null)return;if(!setupToken.isEmpty()){String token=setupToken;setupToken="";web.evaluateJavascript("prefillNapCatToken("+JSONObject.quote(token)+")",null);} if(!sharedText.isEmpty()) {String text=sharedText;sharedText=""; web.evaluateJavascript("paste("+JSONObject.quote(text)+")",null);} }
     @Override public void onNewIntent(Intent intent) {super.onNewIntent(intent);setIntent(intent);receiveShare(intent);showShare();}
-    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){if(document.getElementById('cardForm'))closeEditor();else d.close();return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
+    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){if(document.getElementById('cardForm'))closeEditor();else{if(document.getElementById('wakeupForm'))act('wakeupCancel');d.close();}return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
+    private int wakeupRevision=0;
+    private JSONObject wakeupPreview;
+    private String wakeupPreviewId="";
+    private synchronized int nextWakeup(){wakeupPreview=null;wakeupPreviewId="";return ++wakeupRevision;}
+    private void wakeupResult(int revision,JSONObject preview,String error){
+        try{
+            final JSONObject result=new JSONObject().put("ok",preview!=null);
+            synchronized(this){
+                if(revision!=wakeupRevision)return;wakeupPreview=preview;wakeupPreviewId=preview==null?"":java.util.UUID.randomUUID().toString();
+                if(preview!=null)result.put("id",wakeupPreviewId).put("tableName",preview.getString("tableName")).put("termStart",preview.getString("termStart")).put("meetings",preview.getJSONArray("meetings")).put("count",preview.getJSONArray("sessions").length());
+                else result.put("error",error);
+            }
+            runOnUiThread(()->{synchronized(DemoActivity.this){if(revision!=wakeupRevision)return;}web.evaluateJavascript("window.wakeupPreviewReady && window.wakeupPreviewReady("+result.toString()+")",null);});
+        }catch(Exception ignored){}
+    }
+    private void previewWakeup(String text){final int revision=nextWakeup();new Thread(()->{
+        try{wakeupResult(revision,WakeupImport.fetch(text),"");}
+        catch(IllegalArgumentException e){wakeupResult(revision,null,e.getMessage());}
+        catch(Exception e){wakeupResult(revision,null,"读取失败，请检查网络或使用WakeUp导出文件；已有数据保留");}
+    },"xunji-wakeup-preview").start();}
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request!=71||result!=RESULT_OK||data==null||data.getData()==null)return;
+        final android.net.Uri uri=data.getData();final int revision=nextWakeup();
+        new Thread(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
+            if(in==null)throw new IllegalArgumentException("无法读取课表文件");byte[] buffer=new byte[4096];int n;
+            while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>2000000)throw new IllegalArgumentException("课表文件过大，未导入");}
+            wakeupResult(revision,WakeupImport.parse(new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8)),"");
+        }catch(IllegalArgumentException e){wakeupResult(revision,null,e.getMessage());}catch(Exception e){wakeupResult(revision,null,"此文件无法完整识别为WakeUp课表，未导入");}},"xunji-wakeup-file").start();
+    }
     private class Bridge {
         @JavascriptInterface public String snapshot() {
             try { if(visible)AutoExtractService.whileVisible(DemoActivity.this);AutoExtractService.schedule(DemoActivity.this); SelectionStore selection=new SelectionStore(DemoActivity.this);
@@ -63,6 +93,12 @@ public class DemoActivity extends Activity {
                 JSONObject row=new JSONObject(value);
                 if(type.equals("createCard"))cards.createCard(row);
                 else if(type.equals("updateCard"))cards.updateCard(row);
+                else if(type.equals("importWakeup")){
+                    synchronized(DemoActivity.this){
+                        if(wakeupPreview==null||!wakeupPreviewId.equals(row.optString("id")))throw new IllegalArgumentException("课表预览已失效，请重新读取");
+                        cards.importCourses(wakeupPreview);wakeupPreview=null;wakeupPreviewId="";
+                    }
+                }
                 else if(type.equals("schedule"))cards.setSchedule(row.getString("id"),row.optString("dueDate"),row.optString("dueTime"));
                 else if(type.equals("card"))cards.cardState(row.getString("id"),row.getString("state"));
                 else throw new IllegalArgumentException("操作不可用");
@@ -73,7 +109,10 @@ public class DemoActivity extends Activity {
         @JavascriptInterface public void action(String type,String value) {
             runOnUiThread(()-> { try {
                 SelectionStore selection=new SelectionStore(DemoActivity.this);
-                if(type.equals("napcatConnect")) {NapCatStore n=new NapCatStore(DemoActivity.this);if(!value.trim().isEmpty())new ApiCredential(DemoActivity.this,"napcat-credential").save(value.trim());if(!new ApiCredential(DemoActivity.this,"napcat-credential").configured()){message("请先填写本机连接口令");return;}n.enabled(true);n.status("正在连接手机上的QQ接入端");NapCatService.start(DemoActivity.this);}
+                if(type.equals("wakeupPreview")){previewWakeup(value);return;}
+                else if(type.equals("wakeupCancel")){nextWakeup();return;}
+                else if(type.equals("wakeupFile")){Intent file=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(file,71);return;}
+                else if(type.equals("napcatConnect")) {NapCatStore n=new NapCatStore(DemoActivity.this);if(!value.trim().isEmpty())new ApiCredential(DemoActivity.this,"napcat-credential").save(value.trim());if(!new ApiCredential(DemoActivity.this,"napcat-credential").configured()){message("请先填写本机连接口令");return;}n.enabled(true);n.status("正在连接手机上的QQ接入端");NapCatService.start(DemoActivity.this);}
                 else if(type.equals("napcatStop")){new NapCatStore(DemoActivity.this).enabled(false);stopService(new Intent(DemoActivity.this,NapCatService.class));new NapCatStore(DemoActivity.this).status("接收已暂停，已有原文和卡片保留");}
                 else if(type.equals("napcatFollow")){if(!value.matches("[1-9][0-9]{0,19}"))return;NapCatStore n=new NapCatStore(DemoActivity.this);long revision=n.requestFollow(value);refresh();new Thread(()->{try{boolean known=false;JSONArray groups=n.groups();for(int i=0;i<groups.length();i++)if(value.equals(groups.getJSONObject(i).optString("group_id")))known=true;if(!known)throw new IllegalStateException();NapCatClient client=new NapCatClient(new ApiCredential(DemoActivity.this,"napcat-credential").get());if(n.follow(value,client.history(value),revision))message("已关注，之后的新消息将进入寻迹");refresh();}catch(Exception e){n.failFollow(value,revision);message("关注未完成，请确认本机QQ已登录后重试");refresh();}},"xunji-follow").start();return;}
                 else if(type.equals("napcatUnfollow"))new NapCatStore(DemoActivity.this).unfollow(value);
