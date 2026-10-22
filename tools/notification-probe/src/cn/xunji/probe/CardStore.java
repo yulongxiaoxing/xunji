@@ -15,10 +15,10 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 4); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 5); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
-        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX cards_source ON cards(source_id)");
         createCache(db);
     }
@@ -35,7 +35,18 @@ final class CardStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE cards ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
             db.execSQL("ALTER TABLE cards ADD COLUMN due_time TEXT NOT NULL DEFAULT ''");
         }
+        if(oldVersion<5){
+            db.execSQL("ALTER TABLE cards ADD COLUMN schedule_override INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE cards SET schedule_override=1 WHERE due_date!='' OR due_time!=''");
+            try(Cursor c=db.rawQuery("SELECT cards.id,cards.deadline,sources.received FROM cards JOIN sources ON cards.source_id=sources.id WHERE schedule_override=0",null)){
+                while(c.moveToNext()){
+                    ContentValues automatic=new ContentValues();putAutomatic(automatic,c.getString(1),c.getLong(2));
+                    db.update("cards",automatic,"id=?",new String[]{c.getString(0)});
+                }
+            }
+        }
     }
+
     @Override public void onOpen(SQLiteDatabase db){
         super.onOpen(db);
         if(!db.isReadOnly()){
@@ -91,7 +102,7 @@ final class CardStore extends SQLiteOpenHelper {
                 row.put("category", string(c, "category")); row.put("title", string(c, "title"));
                 row.put("requirements", new JSONArray(string(c, "requirements"))); row.put("deadline", string(c, "deadline"));
                 row.put("status", string(c, "state")); row.put("receivedAt", c.getLong(c.getColumnIndexOrThrow("received")));
-                row.put("dueDate",string(c,"due_date"));row.put("dueTime",string(c,"due_time")); row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
+                row.put("scheduleOverride",c.getInt(c.getColumnIndexOrThrow("schedule_override"))!=0); row.put("dueDate",string(c,"due_date"));row.put("dueTime",string(c,"due_time")); row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
             }
         }
         return rows;
@@ -138,14 +149,24 @@ final class CardStore extends SQLiteOpenHelper {
         }
         return value;
     }
+    private void putAutomatic(ContentValues value,String deadline,long received){
+        SchedulePolicy.Deadline result=SchedulePolicy.fromReceived(deadline,received);
+        value.put("due_date",result.date);value.put("due_time",result.time);value.put("schedule_override",0);
+    }
     synchronized void updateCard(JSONObject row) throws Exception {
-        ContentValues value=editedValues(row);
-        if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)
-            throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
+        ContentValues value=editedValues(row);SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try(Cursor c=db.rawQuery("SELECT cards.due_date,cards.due_time,cards.schedule_override,sources.received FROM cards JOIN sources ON cards.source_id=sources.id WHERE cards.id=? AND cards.state!='deleted'",new String[]{row.getString("id")})){
+            if(!c.moveToFirst())throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
+            boolean changed=(row.has("dueDate")||row.has("dueTime"))&&(!row.optString("dueDate").equals(c.getString(0))||!row.optString("dueTime").equals(c.getString(1)));
+            if(row.optBoolean("automaticDeadline")||(!changed&&c.getInt(2)==0))putAutomatic(value,value.getAsString("deadline"),c.getLong(3));
+            else if(changed)value.put("schedule_override",1);
+            if(db.update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
     synchronized void setSchedule(String id,String date,String time){
         SchedulePolicy.validate(date,time);ContentValues value=new ContentValues();
-        value.put("due_date",date);value.put("due_time",time);value.put("user_modified",1);
+        value.put("due_date",date);value.put("due_time",time);value.put("schedule_override",1);value.put("user_modified",1);
         if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{id})!=1)
             throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
     }
@@ -157,7 +178,10 @@ final class CardStore extends SQLiteOpenHelper {
             JSONArray lines=new JSONArray(value.getAsString("requirements"));for(int i=0;i<lines.length();i++)manualBody.append("\n").append(lines.getString(i));
             if(!value.getAsString("deadline").isEmpty())manualBody.append("\n").append(value.getAsString("deadline"));String body=manualBody.toString();
             if(!insertSource(sourceId,"手动新建","",body,System.currentTimeMillis()))throw new IllegalStateException("新建失败");
-            state(sourceId,"ready","");value.put("id",id);value.put("source_id",sourceId);value.put("state","todo");
+            state(sourceId,"ready","");
+            if(value.getAsString("due_date")!=null&&!value.getAsString("due_date").isEmpty())value.put("schedule_override",1);
+            else putAutomatic(value,value.getAsString("deadline"),System.currentTimeMillis());
+            value.put("id",id);value.put("source_id",sourceId);value.put("state","todo");
             value.put("extraction_title",row.getString("title"));
             if(db.insert("cards",null,value)<0)throw new IllegalStateException("新建失败");
             db.setTransactionSuccessful();return id;
@@ -188,6 +212,8 @@ final class CardStore extends SQLiteOpenHelper {
                 value.put("extraction_title",row.getString("title")); value.put("source_id", sourceId); value.put("category", row.getString("category"));
                 value.put("title", row.getString("title")); value.put("requirements", row.getJSONArray("requirements").toString());
                 value.put("deadline", row.optString("deadline", "")); value.put("state",match==null?"inbox":match.state);
+                JSONObject originalForDate=source(sourceId);if(originalForDate==null)throw new IllegalStateException("原文不存在");
+                putAutomatic(value,row.optString("deadline",""),originalForDate.getLong("receivedAt"));
                 if(db.insertWithOnConflict("cards",null,value,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("事项保存失败，原文已保留");
             }
             JSONObject original=source(sourceId);

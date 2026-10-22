@@ -20,6 +20,7 @@ const {pathToFileURL}=require('node:url');const path=require('node:path');let br
  await page.screenshot({path:path.resolve(__dirname,'../../build/card-management-inbox.png'),fullPage:true});
  const button=(name)=>page.getByRole('button',{name,exact:true});
  check(await button('不加入待办').count()===1,'inbox must offer decline');
+ check(await page.getByText('按消息截止时间自动显示',{exact:false}).count()>0,'schedule should not demand manual date per card');
  await button('不加入待办').click();await button('已忽略').click();check(await page.locator('article.card').count()===1,'ignored visible');
  await button('恢复到收件箱').click();await button('待确认').click();
  await button('更多操作').click();await button('编辑事项').click();await page.getByLabel('标题',{exact:true}).fill('修订标题');await page.getByLabel('具体要求',{exact:true}).fill('修改第一题\n保留第二题');

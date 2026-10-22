@@ -55,6 +55,28 @@ public class StoreInstrumentation extends Instrumentation {
   v3.execSQL("INSERT INTO sources VALUES('v3s','群','发布人','v3原文',1,'ready','',5)");v3.execSQL("INSERT INTO cards VALUES('v3c','v3s','作业','人工编辑的标题','[]','','deleted',1,'旧AI标题','done')");v3.setVersion(3);v3.close();store=new CardStore(context);
   check(card("v3c").getString("dueDate").equals(""),"v3 migrated unknown date");check(card("v3c").getString("title").equals("人工编辑的标题"),"v3 manual content retained");store.cardState("v3c","restore");check(card("v3c").getString("status").equals("done"),"v3 delete restore state retained");
   store.setSchedule("v3c","2026-10-22","");store.replaceCards("v3s",new JSONArray().put(row("重算的标题")));check(card("v3c").getString("dueDate").equals("2026-10-22"),"schedule protected from extraction");check(store.source("v3s").getString("text").equals("v3原文"),"scheduling preserves original");
+  String autoSource=store.addManual("群","老师","测试原文2026年10月23日20:00前");store.replaceCards(autoSource,new JSONArray().put(row("自动截止").put("deadline","2026年10月23日20:00前")));
+  String autoId="";JSONArray all=store.cards();for(int i=0;i<all.length();i++)if(all.getJSONObject(i).getString("sourceId").equals(autoSource))autoId=all.getJSONObject(i).getString("id");
+  check(card(autoId).getString("dueDate").equals("2026-10-23"),"extracted deadline auto schedules");check(card(autoId).getString("dueTime").equals("20:00"),"deadline time automatic");
+  store.cardState(autoId,"todo");check(card(autoId).getString("dueDate").equals("2026-10-23"),"joining todo needs no manual date");
+  store.updateCard(row("只改标题").put("deadline","2026年10月23日20:00前").put("id",autoId).put("dueDate","2026-10-23").put("dueTime","20:00"));
+  check(!card(autoId).getBoolean("scheduleOverride"),"same schedule values do not create override");
+  store.setSchedule(autoId,"2026-10-24","18:00");store.close();store=new CardStore(context);check(card(autoId).getString("dueDate").equals("2026-10-24"),"manual override survives auto backfill");
+  store.updateCard(row("改回自动").put("id",autoId).put("deadline","2026年10月23日20:00前").put("automaticDeadline",true));check(card(autoId).getString("dueDate").equals("2026-10-23"),"can reset automatic deadline");
+  store.close();context.deleteDatabase("xunji-cards.db");
+  SQLiteDatabase v4=context.openOrCreateDatabase("xunji-cards.db",0,null);store=new CardStore(context);store.onCreate(v4);
+  v4.execSQL("INSERT INTO sources VALUES('old-auto','群','发布人','旧原文',1,'ready','',5)");
+  v4.execSQL("INSERT INTO cards(id,source_id,title,category,requirements,deadline,state,user_modified,extraction_title) VALUES('old-auto-c','old-auto','旧自动','作业','[]','2026年10月25日18:00','todo',1,'旧自动')");
+  v4.execSQL("INSERT INTO cards(id,source_id,title,category,requirements,deadline,state,user_modified,extraction_title,due_date,due_time) VALUES('old-override','old-auto','旧手动','作业','[]','2026年10月25日18:00','done',1,'旧手动','2026-10-24','16:00')");
+  // Simulate the actual v4 schema by dropping the new override column before opening.
+  v4.execSQL("ALTER TABLE cards DROP COLUMN schedule_override");v4.setVersion(4);v4.close();store.close();store=new CardStore(context);
+  check(card("old-auto-c").getString("dueDate").equals("2026-10-25"),"v4 todo backfills despite generic user_modified");check(card("old-auto-c").getString("status").equals("todo"),"backfill preserves state");check(card("old-override").getString("dueDate").equals("2026-10-24"),"v4 manual date preserved");
+  String relativeA=store.addManual("群","老师","明天18点前"),relativeB=store.addManual("群","老师","明天18点前");
+  long anchor=java.time.LocalDate.of(2026,10,22).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+  store.getWritableDatabase().execSQL("UPDATE sources SET received=? WHERE id=?",new Object[]{anchor,relativeA});store.getWritableDatabase().execSQL("UPDATE sources SET received=? WHERE id=?",new Object[]{anchor+86400000L,relativeB});
+  JSONArray relativeRows=new JSONArray().put(row("同正文任务").put("deadline","明天18点前"));store.replaceCards(relativeA,relativeRows);store.replaceCards(relativeB,store.cachedExtraction("明天18点前"));
+  JSONArray relativeCards=store.cards();String aDate="",bDate="";for(int i=0;i<relativeCards.length();i++){JSONObject c=relativeCards.getJSONObject(i);if(c.getString("sourceId").equals(relativeA))aDate=c.getString("dueDate");if(c.getString("sourceId").equals(relativeB))bDate=c.getString("dueDate");}
+  check(aDate.equals("2026-10-23"),"relative deadline uses original receipt date");check(bDate.equals("2026-10-24"),"cache reuse recomputes relative date per source");
   store.close();context.deleteDatabase("xunji-cards.db");result.putString("stream","PASS: "+assertions+" Android SQLite lifecycle, re-extraction, persistence and v2 migration assertions\n");finish(Activity.RESULT_OK,result);
  }catch(Throwable e){result.putString("stream","FAIL: "+e.toString());finish(Activity.RESULT_CANCELED,result);}}
 }
