@@ -1,0 +1,58 @@
+# 寻迹：新对话交接
+
+更新时间：2026-10-22。新对话先读本文件及相关代码，不需要重读整段历史。
+
+## 当前目标
+
+10月24日前完成黑客松演示。单人开发，Android 手机为小米15 Pro。电脑 NapCat 接收 QQ → 按群号过滤关注群 → 手机保存完整原文 → 云端 DeepSeek 自动提取 → 收件箱卡片 → 用户加入、完成或取消待办。
+
+## 已确定的约束
+
+- 不改手机 QQ、不 Root、不改现有登录。演示允许电脑一直开着，通过 USB 连接。
+- 只处理文字；图片与附件后续做。
+- 卡片包含来源群、发布人、分类、标题、具体要求、截止时间，原文附后。同一作业的多道题必须完整保留；独立任务才拆卡。
+- 无截止时间也可以创建真实任务；不得猜测时间或编造任务。普通聊天应允许没有事项。
+- 自动整理，无手动“DeepSeek整理”按钮；失败原文进入待处理。所有演示数据已移除。
+- 关注群有“待关注群 / 已关注群”和搜索；按群号保存关注，随时增减。
+- 取消待办回到收件箱；重新整理必须保留已有待办和完成状态。
+- 界面简洁。改设计时使用 frontend-design、ui-ux-pro-max、ui-styling；不要为了例行事项反复向用户确认。
+- 不向群里自动发消息。用户自己发测试消息。不要输出密钥、口令或私聊内容。
+
+## 本轮修复
+
+- v18 / 0.17-empty-result-fix，ExtractionPolicy.VERSION=5。
+- 合法 `cards: []` 正常成功并缓存，不能报“模型返回的事项数量不正确”。提示词明确“ok好了”“你发一下”等无明确任务时不生成卡片。
+- 只清理已知诊断标记“循迹完整性测试1021 / 寻迹完整性测试1021”，从 AI 输入、标题、要求、截止时间及本地题干补全中排除。数据库原文不改。
+- 旧版本成功结果更新规则后重算；旧事项数量错误仅自动重试一次。新错误记录当前规则版本，防止反复重试。
+- 本轮已通过：96 项 Java 检查、real-only.cjs 界面回归、APK 编译与签名验证。v18 已成功安装到61d20d8，USB reverse 已恢复。手机日志显示旧短消息、476字作业重算保存成功，相同正文复用当前缓存；尚未观察新版卡片最终画面（用户正在使用QQ，不打断操作）。应用非 debuggable，run-as 不能读取数据库，不应重复尝试或据此声称数据库检查完成。
+
+## 关键位置和操作
+
+- Android：`tools/notification-probe/src/cn/xunji/probe/`
+- 提取提示词：`tools/notification-probe/assets/extraction-rules.md`，随 APK 打包；改规则应同步提升 ExtractionPolicy.VERSION。
+- UI：`tools/notification-probe/assets/index.html`
+- 构建：`& .\tools\notification-probe\build.ps1`（原生 Java + WebView，无 Gradle）。
+- APK：`tools/notification-probe/build/xunji-notification-test.apk`
+- UI 回归：`.codex/demo-qa/real-only.cjs`，旧 check.cjs 依赖演示数据，已过时。
+- ADB：`C:/Users/17478/AppData/Local/Android/Sdk/platform-tools/adb.exe`；设备序号需现场确认，历史为61d20d8。
+- 安装：`adb -s SERIAL install --no-streaming -r -i com.android.shell APK`
+- 启动：`adb -s SERIAL shell am start -W -n cn.xunji.probe/.DemoActivity`
+- USB桥接：`adb -s SERIAL reverse tcp:3000 tcp:13001`；重连 USB / 重启 ADB 可能丢失。
+- 电脑接入管理：`tools/napcat-desktop/desktop.py start/status/link`；用户启动脚本：`tools/napcat-desktop/start-demo.bat`。
+- NapCat 用独立电脑运行目录与配置，普通电脑版 QQ 同账号不能同时运行。不要启动旧手机 Termux 路线。
+- 接口仅本地开放；私密配置在 `.codex/napcat-desktop/`，不要打印 token 或账号配置。
+- 验证手机网络以寻迹日志和 Android validated 网络为准；不能仅凭 Termux curl 失败判断手机无网。
+- 不用 uiautomator dump；会影响无障碍服务。截图或日志检查即可。
+
+## 尚可后续完善
+
+- 无事项的原文目前仍保留在数据库，成功后不显示在待处理；尚无独立的无事项归档入口。
+- 未匹配的旧非收件箱卡片保留，避免重算丢失用户任务。
+- 云端响应仍可能不一致；同规则版本、相同正文复用缓存。不要声称模型完全确定或所有真实消息已验证。
+
+## 2026-10-22 上传前复核
+
+- 当前目录原先未初始化 Git，没有分支、远端或历史提交；按用户最新要求准备新建私有 `xunji` 仓库，不使用已有 `codex-try`。
+- 新增根 README，并将 Android README 从早期 0.7 诊断工具更新为 v18 的 NapCat + DeepSeek 主流程；历史计划保留为历史记录。
+- 本次重新执行 96 项 Java 检查、现有 real-only.cjs 界面回归、APK 编译与 v3 签名验证，全部通过。未重新安装、读取手机数据库或复查最终真机卡片画面。
+- 私密运行数据、截图、构建产物、签名、数据库与本地初稿 DOCX 不上传；本机已有文件均保留。浏览器回归脚本目前仍为本机工具，不随仓库分发。

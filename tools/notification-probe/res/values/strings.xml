@@ -1,0 +1,3 @@
+<resources>
+    <string name="group_selection_description">仅在你主动开启的120秒测试期间，读取QQ普通群列表的可见群名，由寻迹显示复选框；只暂存你选择的名称供核对。不会点击QQ、发送消息或读取聊天记录。不采集其他应用，不联网；随时可停止并清空。</string>
+</resources>
