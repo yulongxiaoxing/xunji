@@ -48,7 +48,7 @@ public class DemoActivity extends Activity {
     private void receiveShare(Intent intent) { String setup=intent.getStringExtra("xunji.napcat.setup");if(setup!=null&&setup.length()>=10&&setup.length()<=300)setupToken=setup; if(Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {CharSequence text=intent.getCharSequenceExtra(Intent.EXTRA_TEXT); if(text!=null) sharedText=text.toString();} }
     private void showShare() { if(!pageReady||web==null)return;if(!setupToken.isEmpty()){String token=setupToken;setupToken="";web.evaluateJavascript("prefillNapCatToken("+JSONObject.quote(token)+")",null);} if(!sharedText.isEmpty()) {String text=sharedText;sharedText=""; web.evaluateJavascript("paste("+JSONObject.quote(text)+")",null);} }
     @Override public void onNewIntent(Intent intent) {super.onNewIntent(intent);setIntent(intent);receiveShare(intent);showShare();}
-    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){if(document.getElementById('cardForm'))closeEditor();else{if(document.getElementById('wakeupForm'))act('wakeupCancel');d.close();}return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
+    @Override public void onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('modal');if(d&&d.open){if(document.getElementById('cardForm'))closeEditor();else{if(document.getElementById('wakeupForm'))act('wakeupCancel');if(document.getElementById('memoryForm'))act('memoryCancel');d.close();}return true;}return false;})()",result->{if(!"true".equals(result))finish();}); }
     private int wakeupRevision=0;
     private JSONObject wakeupPreview;
     private String wakeupPreviewId="";
@@ -69,8 +69,28 @@ public class DemoActivity extends Activity {
         catch(IllegalArgumentException e){wakeupResult(revision,null,e.getMessage());}
         catch(Exception e){wakeupResult(revision,null,"读取失败，请检查网络或使用WakeUp导出文件；已有数据保留");}
     },"xunji-wakeup-preview").start();}
+    private int memoryRevision=0;
+    private JSONArray memoryDrafts;private String memoryOriginal="",memoryId="";private long memoryReceived;
+    private synchronized int cancelMemory(){memoryDrafts=null;memoryId="";return ++memoryRevision;}
+    private void memoryCallback(int revision,JSONObject result){runOnUiThread(()->{synchronized(DemoActivity.this){if(revision!=memoryRevision)return;}web.evaluateJavascript("window.memoryReady && window.memoryReady("+result.toString()+")",null);});}
+    private void previewMemory(String text,String requestToken){
+        final int revision=cancelMemory();final long received=System.currentTimeMillis();
+        new Thread(()->{try{
+            if(text.trim().isEmpty()||text.length()>50000)throw new IllegalArgumentException("请填写1至50000字的口头记忆");
+            ApiCredential credential=new ApiCredential(DemoActivity.this);if(!credential.configured())throw new IllegalArgumentException("请先在设置中配置DeepSeek密钥；输入内容仍保留");
+            JSONArray draft=new DeepSeekExtractor(DemoActivity.this).extractMemory(credential.get(),new JSONObject().put("text",text).put("receivedAt",received));
+            JSONObject result=new JSONObject().put("ok",true).put("cards",draft).put("requestToken",requestToken);
+            synchronized(DemoActivity.this){if(revision!=memoryRevision)return;memoryDrafts=draft;memoryOriginal=text;memoryReceived=received;memoryId=java.util.UUID.randomUUID().toString();result.put("id",memoryId);}
+            memoryCallback(revision,result);
+        }catch(Exception e){try{memoryCallback(revision,new JSONObject().put("ok",false).put("requestToken",requestToken).put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException?e.getMessage():"整理失败，请检查网络后重试；输入内容仍保留"));}catch(Exception ignored){}}},"xunji-memory-preview").start();
+    }
+    private void startDictation(){
+        try{Intent intent=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"zh-CN").putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"说出要记住的事项、时间和地点");startActivityForResult(intent,72);}
+        catch(android.content.ActivityNotFoundException e){web.evaluateJavascript("window.dictationUnavailable && window.dictationUnavailable()",null);}
+    }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(request==72){if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> matches=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(matches!=null&&!matches.isEmpty())web.evaluateJavascript("window.dictationReady && window.dictationReady("+JSONObject.quote(matches.get(0))+")",null);}else web.evaluateJavascript("window.dictationCancelled && window.dictationCancelled()",null);return;}
         if(request!=71||result!=RESULT_OK||data==null||data.getData()==null)return;
         final android.net.Uri uri=data.getData();final int revision=nextWakeup();
         new Thread(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
@@ -92,12 +112,15 @@ public class DemoActivity extends Activity {
         @JavascriptInterface public String mutate(String type,String value) {
             try{
                 JSONObject row=new JSONObject(value);
-                if(type.equals("createCard"))cards.createCard(row);
+                if(type.equals("createCard"))cards.createCards(row);
                 else if(type.equals("updateCard"))cards.updateCard(row);
+                else if(type.equals("saveMemory")){
+                    synchronized(DemoActivity.this){if(memoryDrafts==null||memoryDrafts.length()==0||!memoryId.equals(row.optString("id")))throw new IllegalArgumentException("口头记忆预览已失效，请重新整理");cards.saveMemory(memoryOriginal,memoryDrafts,memoryReceived);cancelMemory();}
+                }
                 else if(type.equals("importWakeup")){
                     synchronized(DemoActivity.this){
                         if(wakeupPreview==null||!wakeupPreviewId.equals(row.optString("id")))throw new IllegalArgumentException("课表预览已失效，请重新读取");
-                        cards.importCourses(wakeupPreview);wakeupPreview=null;wakeupPreviewId="";
+                        JSONObject summary=cards.importCourses(wakeupPreview);int todayCount=0;String nextDate="",today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();JSONArray occurrences=wakeupPreview.getJSONArray("sessions");for(int i=0;i<occurrences.length();i++){String date=occurrences.getJSONObject(i).getString("date");if(today.equals(date))todayCount++;if(date.compareTo(today)>=0&&(nextDate.isEmpty()||date.compareTo(nextDate)<0))nextDate=date;}wakeupPreview=null;wakeupPreviewId="";return summary.put("ok",true).put("todayCount",todayCount).put("nextDate",nextDate).toString();
                     }
                 }
                 else if(type.equals("schedule"))cards.setSchedule(row.getString("id"),row.optString("dueDate"),row.optString("dueTime"));
@@ -110,7 +133,10 @@ public class DemoActivity extends Activity {
         @JavascriptInterface public void action(String type,String value) {
             runOnUiThread(()-> { try {
                 SelectionStore selection=new SelectionStore(DemoActivity.this);
-                if(type.equals("wakeupPreview")){previewWakeup(value);return;}
+                if(type.equals("memoryPreview")){JSONObject request=new JSONObject(value);previewMemory(request.getString("text"),request.getString("requestToken"));return;}
+                else if(type.equals("memoryCancel")){cancelMemory();return;}
+                else if(type.equals("dictate")){startDictation();return;}
+                else if(type.equals("wakeupPreview")){previewWakeup(value);return;}
                 else if(type.equals("wakeupCancel")){nextWakeup();return;}
                 else if(type.equals("wakeupFile")){Intent file=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(file,71);return;}
                 else if(type.equals("napcatConnect")) {NapCatStore n=new NapCatStore(DemoActivity.this);if(!value.trim().isEmpty())new ApiCredential(DemoActivity.this,"napcat-credential").save(value.trim());if(!new ApiCredential(DemoActivity.this,"napcat-credential").configured()){message("请先填写本机连接口令");return;}n.enabled(true);n.status("正在连接手机上的QQ接入端");NapCatService.start(DemoActivity.this);}

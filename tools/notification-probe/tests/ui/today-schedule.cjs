@@ -10,7 +10,7 @@ const {pathToFileURL}=require('node:url'),path=require('node:path');let browser;
  });
  await page.goto(pathToFileURL(path.resolve(__dirname,'../../assets/index.html')).href);
  const check=(v,m)=>{if(!v)throw Error(m)},button=name=>page.getByRole('button',{name,exact:true});
- check(await page.getByRole('heading',{name:'今天截止',exact:true}).count()===1,'today is home');
+ check(await page.getByRole('heading',{name:'今日待办',exact:true}).count()===1,'today is home');
  check((await page.locator('.today-list').innerText()).includes('今天提交报告'),'today task visible');
  check(!(await page.locator('.today-list').innerText()).includes('未确认的收件箱事项'),'inbox not scheduled');
  check((await page.locator('.overdue-list').innerText()).includes('昨天未完成'),'overdue visible');
@@ -27,7 +27,7 @@ const {pathToFileURL}=require('node:url'),path=require('node:path');let browser;
  for(const width of [320,390,667]){await page.setViewportSize({width,height:844});check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'home no overflow '+width);await button('日程').click();check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'schedule no overflow '+width);await button('今日').click();}
  await page.clock.setFixedTime(new Date('2026-10-23T00:01:00+08:00'));await page.evaluate(()=>refreshNative());check((await page.locator('.date-line').innerText()).includes('10月23日'),'midnight refresh changes local day without data change');
  await page.setViewportSize({width:320,height:640});await page.addStyleTag({content:'body{font-size:24px!important}button,input{font-size:24px!important}'});check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'large text home fits');await button('日程').click();check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'large text schedule fits');await button('今日').click();
- await page.evaluate(()=>{fixture.cards=[];refreshNative()});check((await page.locator('.today-list').innerText()).includes('今天没有截止事项'),'real empty home');
+ await page.evaluate(()=>{fixture.cards=[];refreshNative()});check((await page.locator('.today-list').innerText()).includes('今天没有已安排的待办'),'real empty home');
  const west=await browser.newPage({timezoneId:'America/Los_Angeles'});await west.clock.setFixedTime(new Date('2026-10-22T00:30:00Z'));await west.goto(pathToFileURL(path.resolve(__dirname,'../../assets/index.html')).href);check((await west.locator('.date-line').innerText()).includes('10月21日'),'calendar follows local timezone rather than UTC');await west.close();
  check(errors.length===0,errors.join(';'));console.log('PASS: today/workspace, date confirmation, status exclusion, schedule filtering, complete sync, year boundary and mobile layouts');await browser.close();
 })().catch(async e=>{console.error(e);if(browser)await browser.close();process.exitCode=1});

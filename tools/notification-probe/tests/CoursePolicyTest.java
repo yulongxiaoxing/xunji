@@ -13,6 +13,12 @@ public class CoursePolicyTest {
   try{CoursePolicy.validateTime("10:00","09:00");throw new AssertionError("inverted times accepted");}catch(IllegalArgumentException e){count++;}
   check(CoursePolicy.key("课程id","2026-10-23",1,2).equals(CoursePolicy.key("课程id","2026-10-23",1,2)),"id stable");
   check(!CoursePolicy.key("课程id","2026-10-23",1,2).equals(CoursePolicy.key("课程id","2026-10-24",1,2)),"occurrences independent");
+  check(CoursePolicy.repeatDates("2026-10-23","weekly",1,"count",2,"").equals(Arrays.asList("2026-10-26","2026-11-02")),"repeat starts next selected weekday");
+  check(CoursePolicy.repeatDates("2026-10-23","biweekly",5,"until",0,"2026-11-20").equals(Arrays.asList("2026-10-23","2026-11-06","2026-11-20")),"repeat until inclusive");
+  check(CoursePolicy.repeatDates("2026-12-25","weekly",5,"count",2,"").get(1).equals("2027-01-01"),"manual repeat crosses year");
+  try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"count",0,"");throw new AssertionError("zero repeat accepted");}catch(IllegalArgumentException e){count++;}
+  try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"until",0,"2026-10-22");throw new AssertionError("past until accepted");}catch(IllegalArgumentException e){count++;}
+  try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"until",0,"2030-10-23");throw new AssertionError("unbounded repeat accepted");}catch(IllegalArgumentException e){count++;}
   System.out.println(count+" course week, time and occurrence checks passed");
  }
 }

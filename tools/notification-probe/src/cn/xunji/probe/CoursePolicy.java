@@ -16,5 +16,20 @@ final class CoursePolicy {
         try{if(!start.matches("[0-9]{2}:[0-9]{2}")||!end.matches("[0-9]{2}:[0-9]{2}")||!LocalTime.parse(end).isAfter(LocalTime.parse(start)))throw new IllegalArgumentException();}
         catch(Exception e){throw new IllegalArgumentException("课程起止时间不完整或无效，未导入");}
     }
+    static List<String> repeatDates(String start,String rule,int weekday,String mode,int count,String until){
+        if("none".equals(rule))return Collections.singletonList(start);
+        if(!"weekly".equals(rule)&&!"biweekly".equals(rule))throw new IllegalArgumentException("请选择有效重复规律");
+        if(weekday<1||weekday>7||start.isEmpty())throw new IllegalArgumentException("请设置首次日期和星期");
+        LocalDate base=LocalDate.parse(start).with(TemporalAdjusters.nextOrSame(java.time.DayOfWeek.of(weekday)));
+        boolean byCount="count".equals(mode);if(!byCount&&!"until".equals(mode))throw new IllegalArgumentException("请选择重复结束方式");
+        if(byCount&&(count<1||count>104))throw new IllegalArgumentException("重复次数应为1至104次");
+        LocalDate limit=byCount?base.plusYears(2):LocalDate.parse(until);
+        if(limit.isBefore(base)||limit.isAfter(base.plusYears(2)))throw new IllegalArgumentException("截止日须在首次上课后两年内");
+        List<String> result=new ArrayList<>();int step="biweekly".equals(rule)?2:1;
+        for(LocalDate day=base;!day.isAfter(limit)&&(!byCount||result.size()<count);day=day.plusWeeks(step)){
+            if(result.size()>=104)throw new IllegalArgumentException("重复安排不能超过104次");result.add(day.toString());
+        }
+        if(byCount&&result.size()!=count)throw new IllegalArgumentException("重复安排超出两年范围");return result;
+    }
     static String key(String course,String date,int node,int step){return "course:"+UUID.nameUUIDFromBytes((course+"|"+date+"|"+node+"|"+step).getBytes(StandardCharsets.UTF_8));}
 }
