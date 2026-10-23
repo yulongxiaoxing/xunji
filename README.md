@@ -90,4 +90,4 @@ v23已覆盖安装并核对版本。163项Java检查、64项隔离Android SQLite
 
 “口头记忆”支持系统语音转文字或键入，修改文字后由用户点击DeepSeek整理，核对预览后加入待办。原始文字保留，不保存录音；需要手机语音识别能力和已配置的DeepSeek密钥。缺失信息不补造，网络失败内容仍保留。真实口述与云端联调尚未验收。
 
-169项Java检查、90项隔离Android SQLite断言、五组界面回归通过；v25已覆盖安装。真机已确认首页及下拉刷新、已有课程在未来七天显示。新回归：`node tools/notification-probe/tests/ui/live-todos-memory.cjs`。所有改动仅在本地，未上传GitHub。
+169项Java检查、90项隔离Android SQLite断言、五组界面回归通过；v25已覆盖安装。真机已确认首页及下拉刷新、已有课程在未来七天显示。新回归：`node tools/notification-probe/tests/ui/live-todos-memory.cjs`。2026-10-23用户明确授权将当前版本同步到私有仓库`yulongxiaoxing/xunji`；后续开发仍不默认自动上传。
