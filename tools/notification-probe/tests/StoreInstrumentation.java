@@ -126,6 +126,29 @@ public class StoreInstrumentation extends Instrumentation {
   String premature=store.createCard(new JSONObject(autoRow.toString()).put("dueDate","2099-10-28"));store.getWritableDatabase().execSQL("UPDATE cards SET state='done',auto_completed=0 WHERE id=?",new String[]{premature});store.getWritableDatabase().setVersion(8);store.close();store=new CardStore(context);check(card(premature).getString("status").equals("todo"),"v8 migration reopens premature legacy course completion");
   try{store.cardState(premature,"done");throw new AssertionError("future course can be marked completed");}catch(IllegalArgumentException expected){check(card(premature).getString("status").equals("todo"),"future course rejects completion until actual end");}
   store.getWritableDatabase().execSQL("UPDATE cards SET state='deleted',previous_state='done' WHERE id=?",new String[]{premature});store.cardState(premature,"restore");check(card(premature).getString("status").equals("todo"),"restoring legacy future class cannot reintroduce completed state");
+  reset();String eventText="活动将于2026年10月26日18:30—20:00举行，地点为活动中心201室，可携带手机或相机。";
+  JSONObject extractedEvent=row("摄影分享会").put("category","活动").put("deadline","2026年10月26日18:30—20:00").put("requirements",new JSONArray().put(eventText));
+  String eventSource=store.addManual("测试群","发布人",eventText);store.replaceCards(eventSource,new JSONArray().put(extractedEvent));String groupEventId=id(0);
+  check(card(groupEventId).has("event")&&card(groupEventId).getJSONObject("event").getString("endTime").equals("20:00"),"group extraction persists full event interval");
+  check(card(groupEventId).getString("dueTime").equals("18:30")&&card(groupEventId).getString("dueDate").equals("2026-10-26"),"event date and start time projected automatically");
+  store.cardState(groupEventId,"todo");store.replaceCards(eventSource,new JSONArray().put(extractedEvent));check(card(groupEventId).getString("status").equals("todo")&&card(groupEventId).has("event"),"re-extraction preserves accepted event");
+  store.getWritableDatabase().execSQL("UPDATE cards SET event_data='',due_time='',user_modified=1,title='自己修改的标题' WHERE id=?",new String[]{groupEventId});
+  String protectedEvent=store.createCard(new JSONObject(extractedEvent.toString()).put("title","人工日期").put("dueDate","2026-11-01").put("dueTime","08:00"));
+  store.getWritableDatabase().execSQL("UPDATE cards SET state='deleted',previous_state='done',event_data='',schedule_override=1 WHERE id=?",new String[]{protectedEvent});
+  store.getWritableDatabase().setVersion(9);store.close();store=new CardStore(context);
+  check(card(groupEventId).has("event")&&card(groupEventId).getString("dueTime").equals("18:30"),"v9 upgrade fills accepted event interval");
+  check(card(groupEventId).getString("status").equals("todo")&&card(groupEventId).getString("title").equals("自己修改的标题"),"upgrade keeps state and edited title");
+  check(!card(protectedEvent).has("event")&&card(protectedEvent).getString("dueDate").equals("2026-11-01")&&card(protectedEvent).getString("status").equals("deleted"),"upgrade protects manual date and deleted state");
+  check(store.source(eventSource).getString("text").equals(eventText),"interval repair keeps complete original");
+  String same="明天9:00—11:00考试";JSONObject relativeEvent=row("期中考试").put("category","考试").put("deadline",same).put("requirements",new JSONArray());
+  String eventRelativeA=store.addManual("测试群","发布人",same),eventRelativeB=store.addManual("测试群","发布人",same);
+  store.getWritableDatabase().execSQL("UPDATE sources SET received=? WHERE id=?",new Object[]{java.time.Instant.parse("2026-10-23T04:00:00Z").toEpochMilli(),eventRelativeA});
+  store.getWritableDatabase().execSQL("UPDATE sources SET received=? WHERE id=?",new Object[]{java.time.Instant.parse("2026-10-24T04:00:00Z").toEpochMilli(),eventRelativeB});
+  store.replaceCards(eventRelativeA,new JSONArray().put(relativeEvent));store.replaceCards(eventRelativeB,store.cachedExtraction(same));
+  String dateA="",dateB="";JSONArray relativeSaved=store.cards();for(int i=0;i<relativeSaved.length();i++){JSONObject c=relativeSaved.getJSONObject(i);if(c.getString("sourceId").equals(eventRelativeA))dateA=c.getString("dueDate");if(c.getString("sourceId").equals(eventRelativeB))dateB=c.getString("dueDate");}
+  check(dateA.equals("2026-10-24")&&dateB.equals("2026-10-25"),"cached relative interval resolves per source received date");
+  String multiSource=store.addManual("测试群","发布人",eventText);store.replaceCards(multiSource,new JSONArray().put(row("作业")).put(row("资料不全的考试").put("category","考试").put("deadline","")));
+  JSONArray multiSaved=store.cards();for(int i=0;i<multiSaved.length();i++){JSONObject c=multiSaved.getJSONObject(i);if(c.getString("sourceId").equals(multiSource))check(!c.has("event"),"multi-card source never assigns another task's interval");}
   boolean privateAudit=false;for(String asset:context.getAssets().list(""))if(asset.equals("private-course.ics"))privateAudit=true;
   if(privateAudit){String userRaw;try(java.io.InputStream in=context.getAssets().open("private-course.ics");java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);userRaw=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);}
     JSONObject audit=IcsImport.parse(userRaw);JSONArray audited=audit.getJSONArray("sessions");int total=audited.length(),monday=0,wednesday=0;java.util.List<String> wedDates=new java.util.ArrayList<>();

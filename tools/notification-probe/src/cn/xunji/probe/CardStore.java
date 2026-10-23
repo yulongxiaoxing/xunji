@@ -15,7 +15,7 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 9); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 10); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0, course_data TEXT NOT NULL DEFAULT '', event_data TEXT NOT NULL DEFAULT '', auto_completed INTEGER NOT NULL DEFAULT 0)");
@@ -56,8 +56,18 @@ final class CardStore extends SQLiteOpenHelper {
                 if(!CoursePolicy.ended(c.getString(1),new JSONObject(c.getString(2)).getString("endTime"),now)){ContentValues v=new ContentValues();v.put("state","todo");v.put("auto_completed",0);db.update("cards",v,"id=?",new String[]{c.getString(0)});}
             }catch(Exception ignored){}
         }
+        if(oldVersion<10)backfillEventIntervals(db);
     }
 
+    private void backfillEventIntervals(SQLiteDatabase db){
+        try(Cursor c=db.rawQuery("SELECT cards.id,cards.category,cards.deadline,cards.requirements,sources.body,sources.received,(SELECT COUNT(*) FROM cards siblings WHERE siblings.source_id=cards.source_id) FROM cards JOIN sources ON cards.source_id=sources.id WHERE cards.category IN ('活动','考试','竞赛') AND cards.event_data='' AND cards.schedule_override=0",null)){
+            while(c.moveToNext())try{
+                ContentValues value=new ContentValues();
+                putEventInterval(value,c.getString(1),c.getString(2),new JSONArray(c.getString(3)),c.getString(4),c.getLong(5),c.getInt(6)==1);
+                if(value.size()>0)db.update("cards",value,"id=?",new String[]{c.getString(0)});
+            }catch(org.json.JSONException ignored){}
+        }
+    }
     @Override public void onOpen(SQLiteDatabase db){
         super.onOpen(db);
         if(!db.isReadOnly()){
@@ -201,6 +211,18 @@ final class CardStore extends SQLiteOpenHelper {
         SchedulePolicy.Deadline result=SchedulePolicy.fromReceived(deadline,received);
         value.put("due_date",result.date);value.put("due_time",result.time);value.put("schedule_override",0);
     }
+    private void putEventInterval(ContentValues value,String category,String deadline,JSONArray requirements,String original,long received,boolean singleCard) throws org.json.JSONException {
+        if(!EventPolicy.category(category))return;
+        StringBuilder text=new StringBuilder(deadline);
+        for(int i=0;i<requirements.length();i++)text.append('\n').append(requirements.getString(i));
+        String context=text.toString();EventPolicy.Interval interval=EventPolicy.fromReceived(context,received);
+        if(interval==null&&singleCard){context=original;interval=EventPolicy.fromReceived(context,received);}
+        if(interval==null)return;
+        java.util.regex.Matcher location=java.util.regex.Pattern.compile("地点(?:为|是|[:：])\\s*([^，。；;\\n]{1,100})|在([^，。；;\\n]{1,100}?)举行").matcher(context);
+        String place=location.find()?(location.group(1)!=null?location.group(1):location.group(2)):"";
+        JSONObject event=new JSONObject().put("location",place).put("startTime",interval.start).put("endTime",interval.end);
+        value.put("event_data",event.toString());value.put("due_date",interval.date);value.put("due_time",interval.start);value.put("schedule_override",0);
+    }
     synchronized void updateCard(JSONObject row) throws Exception {
         ContentValues value=editedValues(row);SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try(Cursor c=db.rawQuery("SELECT cards.due_date,cards.due_time,cards.schedule_override,sources.received,cards.state,cards.auto_completed FROM cards JOIN sources ON cards.source_id=sources.id WHERE cards.id=? AND cards.state!='deleted'",new String[]{row.getString("id")})){
@@ -314,6 +336,7 @@ final class CardStore extends SQLiteOpenHelper {
                 value.put("deadline", row.optString("deadline", "")); value.put("state",match==null?"inbox":match.state);
                 JSONObject originalForDate=source(sourceId);if(originalForDate==null)throw new IllegalStateException("原文不存在");
                 putAutomatic(value,row.optString("deadline",""),originalForDate.getLong("receivedAt"));
+                putEventInterval(value,row.getString("category"),row.optString("deadline",""),row.getJSONArray("requirements"),originalForDate.getString("text"),originalForDate.getLong("receivedAt"),cards.length()==1);
                 if(db.insertWithOnConflict("cards",null,value,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("事项保存失败，原文已保留");
             }
             JSONObject original=source(sourceId);

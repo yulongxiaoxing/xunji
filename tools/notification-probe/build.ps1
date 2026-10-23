@@ -42,10 +42,12 @@ Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes"
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.DeadlinePolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\CoursePolicy.java","$probeRoot\tests\CoursePolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.CoursePolicyTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/EventPolicy.java","$probeRoot/tests/EventPolicyTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir/test-classes",'cn.xunji.probe.EventPolicyTest')
 Invoke-Checked "$toolsDir\aapt2.exe" @('compile', '--dir', "$probeRoot\res", '-o', "$buildDir\resources.zip")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
-    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '28',
-    '--version-name', '0.27-fullscreen-calendar', "$buildDir\resources.zip")
+    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '30',
+    '--version-name', '0.29-dated-agenda', "$buildDir\resources.zip")
 $sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen" -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 Invoke-Checked $javaCompiler (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options',
