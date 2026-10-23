@@ -19,6 +19,8 @@ public class CoursePolicyTest {
   try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"count",0,"");throw new AssertionError("zero repeat accepted");}catch(IllegalArgumentException e){count++;}
   try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"until",0,"2026-10-22");throw new AssertionError("past until accepted");}catch(IllegalArgumentException e){count++;}
   try{CoursePolicy.repeatDates("2026-10-23","weekly",5,"until",0,"2030-10-23");throw new AssertionError("unbounded repeat accepted");}catch(IllegalArgumentException e){count++;}
+  long boundary=java.time.LocalDateTime.parse("2099-10-23T09:40:00").atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli();
+  check(!CoursePolicy.ended("2099-10-23","09:40",boundary-1),"class not completed before end");check(CoursePolicy.ended("2099-10-23","09:40",boundary),"class complete at end boundary");
   System.out.println(count+" course week, time and occurrence checks passed");
  }
 }

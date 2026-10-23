@@ -15,10 +15,10 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 7); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 8); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
-        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0, course_data TEXT NOT NULL DEFAULT '', event_data TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0, course_data TEXT NOT NULL DEFAULT '', event_data TEXT NOT NULL DEFAULT '', auto_completed INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX cards_source ON cards(source_id)");
         createCache(db);
     }
@@ -47,6 +47,10 @@ final class CardStore extends SQLiteOpenHelper {
         }
         if(oldVersion<7)db.execSQL("ALTER TABLE cards ADD COLUMN event_data TEXT NOT NULL DEFAULT ''");
         if(oldVersion<6)db.execSQL("ALTER TABLE cards ADD COLUMN course_data TEXT NOT NULL DEFAULT ''");
+        if(oldVersion<8)db.execSQL("ALTER TABLE cards ADD COLUMN auto_completed INTEGER NOT NULL DEFAULT 0");
+        if(oldVersion<8)try(Cursor c=db.rawQuery("SELECT id,course_data FROM cards WHERE category='课程' AND user_modified=0 AND course_data!=''",null)){
+            while(c.moveToNext())try{JSONObject course=new JSONObject(c.getString(1));if(IcsImport.hydrateWakeupFacts(course)){ContentValues v=new ContentValues();v.put("course_data",course.toString());db.update("cards",v,"id=?",new String[]{c.getString(0)});}}catch(Exception ignored){}
+        }
     }
 
     @Override public void onOpen(SQLiteDatabase db){
@@ -96,6 +100,7 @@ final class CardStore extends SQLiteOpenHelper {
         value.put("aiState", string(c, "state")); value.put("error", string(c, "error")); return value;
     }
     JSONArray cards() throws Exception {
+        completeEndedCourses(System.currentTimeMillis());
         JSONArray rows = new JSONArray();
         try (Cursor c = getReadableDatabase().rawQuery("SELECT cards.*,sources.group_name,sources.publisher,sources.received FROM cards JOIN sources ON cards.source_id=sources.id ORDER BY sources.received DESC,cards.rowid", null)) {
             while (c.moveToNext()) {
@@ -104,11 +109,27 @@ final class CardStore extends SQLiteOpenHelper {
                 row.put("category", string(c, "category")); row.put("title", string(c, "title"));
                 row.put("requirements", new JSONArray(string(c, "requirements"))); row.put("deadline", string(c, "deadline"));
                 row.put("status", string(c, "state")); row.put("receivedAt", c.getLong(c.getColumnIndexOrThrow("received")));
+                row.put("autoCompleted",c.getInt(c.getColumnIndexOrThrow("auto_completed"))!=0);
                 if(!string(c,"event_data").isEmpty())row.put("event",new JSONObject(string(c,"event_data")));
                 if(!string(c,"course_data").isEmpty())row.put("course",new JSONObject(string(c,"course_data"))); row.put("scheduleOverride",c.getInt(c.getColumnIndexOrThrow("schedule_override"))!=0); row.put("dueDate",string(c,"due_date"));row.put("dueTime",string(c,"due_time")); row.put("userModified", c.getInt(c.getColumnIndexOrThrow("user_modified"))!=0); row.put("demo", false); rows.put(row);
             }
         }
         return rows;
+    }
+    synchronized int completeEndedCourses(long now){
+        SQLiteDatabase db=getWritableDatabase();int changed=0;db.beginTransaction();
+        try(Cursor c=db.rawQuery("SELECT id,due_date,course_data FROM cards WHERE category='课程' AND state='todo' AND due_date!='' AND course_data!=''",null)){
+            while(c.moveToNext())try{
+                JSONObject course=new JSONObject(c.getString(2));if(!CoursePolicy.ended(c.getString(1),course.getString("endTime"),now))continue;
+                ContentValues v=new ContentValues();v.put("state","done");v.put("auto_completed",1);changed+=db.update("cards",v,"id=? AND state='todo'",new String[]{c.getString(0)});
+            }catch(org.json.JSONException|java.time.DateTimeException ignored){}
+            db.setTransactionSuccessful();return changed;
+        }finally{db.endTransaction();}
+    }
+    synchronized long nextCourseEnd(long now){
+        long next=Long.MAX_VALUE;try(Cursor c=getReadableDatabase().rawQuery("SELECT due_date,course_data FROM cards WHERE category='课程' AND state='todo' AND due_date!='' AND course_data!=''",null)){
+            while(c.moveToNext())try{long end=CoursePolicy.endMillis(c.getString(0),new JSONObject(c.getString(1)).getString("endTime"));if(end>now&&end<next)next=end;}catch(Exception ignored){}
+        }return next;
     }
     void state(String id, String state, String error) {
         ContentValues value = new ContentValues(); value.put("state", state); value.put("error", error);
@@ -170,12 +191,15 @@ final class CardStore extends SQLiteOpenHelper {
     }
     synchronized void updateCard(JSONObject row) throws Exception {
         ContentValues value=editedValues(row);SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
-        try(Cursor c=db.rawQuery("SELECT cards.due_date,cards.due_time,cards.schedule_override,sources.received FROM cards JOIN sources ON cards.source_id=sources.id WHERE cards.id=? AND cards.state!='deleted'",new String[]{row.getString("id")})){
+        try(Cursor c=db.rawQuery("SELECT cards.due_date,cards.due_time,cards.schedule_override,sources.received,cards.state,cards.auto_completed FROM cards JOIN sources ON cards.source_id=sources.id WHERE cards.id=? AND cards.state!='deleted'",new String[]{row.getString("id")})){
             if(!c.moveToFirst())throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
             boolean changed=(row.has("dueDate")||row.has("dueTime"))&&(!row.optString("dueDate").equals(c.getString(0))||!row.optString("dueTime").equals(c.getString(1)));
             if("课程".equals(row.optString("category"))||value.containsKey("event_data")&&!value.getAsString("event_data").isEmpty())value.put("schedule_override",1);
             else if(row.optBoolean("automaticDeadline")||(!changed&&c.getInt(2)==0))putAutomatic(value,value.getAsString("deadline"),c.getLong(3));
             else if(changed)value.put("schedule_override",1);
+            if("课程".equals(row.optString("category"))&&"done".equals(c.getString(4))&&c.getInt(5)!=0&&CoursePolicy.endMillis(row.getString("dueDate"),row.getJSONObject("course").getString("endTime"))>System.currentTimeMillis()){
+                value.put("state","todo");value.put("auto_completed",0);
+            }
             if(db.update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}

@@ -21,6 +21,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:exported="false" />
+        <service android:name=".CourseCompletionService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <service android:name=".NapCatService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started loopback QQ connector for selected groups" /></service>
         <service android:name=".AutoExtractService" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <service android:name=".ProbeService" android:exported="false"

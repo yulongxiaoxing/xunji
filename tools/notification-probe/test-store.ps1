@@ -1,4 +1,4 @@
-param([string]$Serial,[string]$SdkRoot="$env:LOCALAPPDATA\Android\Sdk")
+param([string]$Serial,[string]$SdkRoot="$env:LOCALAPPDATA\Android\Sdk",[string]$IcsFile)
 $ErrorActionPreference='Stop'
 if(-not $Serial){throw 'Specify the test device with -Serial. Tests install a separate cn.xunji.cardtests package; they never open the real app data.'}
 $probeRoot=$PSScriptRoot
@@ -14,7 +14,7 @@ Invoke-Checked "$toolsDir\d8.bat" @('--lib',$platformJar,'--min-api','28','--out
 Invoke-Checked "$toolsDir\aapt2.exe" @('link','-o',"$buildDir\unsigned.apk",'-I',$platformJar,'--manifest',"$probeRoot\tests\AndroidManifest.xml")
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive=[System.IO.Compression.ZipFile]::Open("$buildDir\unsigned.apk",'Update')
-try{[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,"$buildDir\dex\classes.dex",'classes.dex') | Out-Null}finally{$archive.Dispose()}
+try{[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,"$buildDir\dex\classes.dex",'classes.dex') | Out-Null;if($IcsFile){[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Resolve-Path -LiteralPath $IcsFile).Path,'assets/private-course.ics') | Out-Null}}finally{$archive.Dispose()}
 Invoke-Checked "$toolsDir\zipalign.exe" @('-f','4',"$buildDir\unsigned.apk","$buildDir\aligned.apk")
 if(-not(Test-Path "$probeRoot\build\test.keystore")){throw 'Run build.ps1 first to generate the local test signing key.'}
 Invoke-Checked "$toolsDir\apksigner.bat" @('sign','--ks',"$probeRoot\build\test.keystore",'--ks-pass','pass:android','--out',"$buildDir\store-tests.apk","$buildDir\aligned.apk")

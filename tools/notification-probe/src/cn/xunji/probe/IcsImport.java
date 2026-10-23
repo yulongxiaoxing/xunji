@@ -28,6 +28,12 @@ final class IcsImport {
         List<Property> list=event.get(name);if(list==null){if(required)throw fail("缺少"+name);return null;}if(list.size()!=1)throw fail(name+"重复");return list.get(0);
     }
     static String value(Map<String,List<Property>> event,String name){Property p=one(event,name,false);return p==null?"":text(p.value);}
+    static boolean hydrateWakeupFacts(JSONObject course) throws Exception {
+        if(!"ics".equals(course.optString("format"))||!course.optString("teacher").isEmpty())return false;
+        String[] parts=course.optString("description").split("\n",-1);if(parts.length!=3||!parts[0].matches("第\\s*\\d+\\s*[-—]\\s*\\d+\\s*节")||parts[1].trim().isEmpty()||parts[2].trim().isEmpty())return false;
+        String raw=course.optString("location");if(!raw.equals(parts[1]+" "+parts[2]))return false;
+        course.put("rawLocation",raw).put("location",parts[1]).put("teacher",parts[2]);return true;
+    }
     static ZonedDateTime date(Property p,String input){
         if(p.params.containsKey("VALUE")&&!p.params.get("VALUE").equals("DATE-TIME"))throw fail("全天课程没有完整起止时间");
         try{
@@ -94,6 +100,7 @@ final class IcsImport {
                 String day=a.toLocalDate().toString(),begin=a.toLocalTime().toString(),finish=b.toLocalTime().toString();CoursePolicy.validateTime(begin,finish);
                 JSONObject c=new JSONObject().put("format","ics").put("name",name).put("location",location).put("teacher",teacher).put("description",description).put("startTime",begin).put("endTime",finish).put("date",day).put("day",a.getDayOfWeek().getValue());
                 c.put("importIdentity",new JSONArray().put(name).put(location).put(teacher).put(description).put(begin).put(finish).toString());
+                hydrateWakeupFacts(c);
                 String id=CoursePolicy.key("ics:"+uid,day,a.getHour()*60+a.getMinute(),0);if(!ids.add(id))throw fail("存在重复课次标识");
                 sessions.put(new JSONObject().put("id",id).put("date",day).put("course",c));meetings.put(c);if(first.isEmpty()||day.compareTo(first)<0)first=day;
                 if(sessions.length()>3000)throw fail("课程超过3000次");

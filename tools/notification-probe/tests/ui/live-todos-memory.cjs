@@ -9,7 +9,7 @@ const path=require('node:path'),{pathToFileURL}=require('node:url');let browser;
  });
  await page.goto(pathToFileURL(path.resolve(__dirname,'../../assets/index.html')).href);const check=(v,m)=>{if(!v)throw Error(m)},button=name=>page.getByRole('button',{name,exact:true}),dialogButton=name=>page.getByRole('dialog').getByRole('button',{name,exact:true});
  await page.evaluate(()=>fixture.cards.push({id:'live',title:'刚导入的课程',category:'课程',status:'todo',dueDate:'2026-10-23',dueTime:'08:00',course:{teacher:'测试老师',location:'A101',startTime:'08:00',endTime:'09:40'},requirements:[],deadline:''}));
- await button('刷新待办').click();check((await page.locator('.today-list').innerText()).includes('刚导入的课程'),'refresh brings imported lesson into unified today');
+ await button('刷新待办').click();check((await page.locator('#courseList').innerText()).includes('刚导入的课程'),'refresh brings imported lesson into Today course panel');
  await page.evaluate(()=>fixture.cards.push({id:'pull',title:'下拉后同步',category:'其他',status:'todo',dueDate:'2026-10-23',requirements:[],deadline:''}));
  await page.evaluate(()=>{window.scrollTo(0,0);const target=document.querySelector('h1');function touch(type,y){const point=new Touch({identifier:1,target,clientX:80,clientY:y});target.dispatchEvent(new TouchEvent(type,{bubbles:true,cancelable:true,touches:type==='touchend'?[]:[point]}))}touch('touchstart',100);touch('touchmove',210);touch('touchend',210)});
  check((await page.locator('.today-list').innerText()).includes('下拉后同步'),'top downward gesture refreshes snapshot');

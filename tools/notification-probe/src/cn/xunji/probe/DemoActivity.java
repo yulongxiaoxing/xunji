@@ -41,7 +41,7 @@ public class DemoActivity extends Activity {
         });
         web.addJavascriptInterface(new Bridge(), "Xunji"); frame.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1)); setContentView(frame); frame.requestApplyInsets(); web.loadUrl("file:///android_asset/index.html");
     }
-    @Override public void onResume() { super.onResume(); visible=true; new SelectionStore(this).stop(); GroupSelectionService.dismissReturnButton(); if(new NapCatStore(this).enabled())NapCatService.start(this);AutoExtractService.whileVisible(this);AutoExtractService.schedule(this); refresh(); }
+    @Override public void onResume() { super.onResume(); visible=true; new SelectionStore(this).stop(); GroupSelectionService.dismissReturnButton(); if(new NapCatStore(this).enabled())NapCatService.start(this);AutoExtractService.whileVisible(this);AutoExtractService.schedule(this);CourseCompletionService.schedule(this); refresh(); }
     @Override public void onPause() {visible=false;super.onPause();}
     private void refresh() { if(web!=null) runOnUiThread(()->web.evaluateJavascript("window.refreshNative && window.refreshNative()",null)); }
     private void message(String text) { runOnUiThread(()->Toast.makeText(this,text,Toast.LENGTH_LONG).show()); }
@@ -120,13 +120,13 @@ public class DemoActivity extends Activity {
                 else if(type.equals("importWakeup")){
                     synchronized(DemoActivity.this){
                         if(wakeupPreview==null||!wakeupPreviewId.equals(row.optString("id")))throw new IllegalArgumentException("课表预览已失效，请重新读取");
-                        JSONObject summary=cards.importCourses(wakeupPreview);int todayCount=0;String nextDate="",today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();JSONArray occurrences=wakeupPreview.getJSONArray("sessions");for(int i=0;i<occurrences.length();i++){String date=occurrences.getJSONObject(i).getString("date");if(today.equals(date))todayCount++;if(date.compareTo(today)>=0&&(nextDate.isEmpty()||date.compareTo(nextDate)<0))nextDate=date;}wakeupPreview=null;wakeupPreviewId="";return summary.put("ok",true).put("todayCount",todayCount).put("nextDate",nextDate).toString();
+                        JSONObject summary=cards.importCourses(wakeupPreview);int todayCount=0;String nextDate="",today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();JSONArray occurrences=wakeupPreview.getJSONArray("sessions");for(int i=0;i<occurrences.length();i++){String date=occurrences.getJSONObject(i).getString("date");if(today.equals(date))todayCount++;if(date.compareTo(today)>=0&&(nextDate.isEmpty()||date.compareTo(nextDate)<0))nextDate=date;}wakeupPreview=null;wakeupPreviewId="";CourseCompletionService.schedule(DemoActivity.this);return summary.put("ok",true).put("todayCount",todayCount).put("nextDate",nextDate).toString();
                     }
                 }
                 else if(type.equals("schedule"))cards.setSchedule(row.getString("id"),row.optString("dueDate"),row.optString("dueTime"));
                 else if(type.equals("card"))cards.cardState(row.getString("id"),row.getString("state"));
                 else throw new IllegalArgumentException("操作不可用");
-                return "{\"ok\":true}";
+                CourseCompletionService.schedule(DemoActivity.this);return "{\"ok\":true}";
             }catch(IllegalArgumentException e){return "{\"ok\":false,\"error\":"+JSONObject.quote(e.getMessage())+"}";}
             catch(Exception e){return "{\"ok\":false,\"error\":\"保存失败，请重试；原有内容已保留\"}";}
         }

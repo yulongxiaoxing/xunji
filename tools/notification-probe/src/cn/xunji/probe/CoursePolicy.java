@@ -31,5 +31,7 @@ final class CoursePolicy {
         }
         if(byCount&&result.size()!=count)throw new IllegalArgumentException("重复安排超出两年范围");return result;
     }
+    static long endMillis(String date,String end){return LocalDate.parse(date).atTime(LocalTime.parse(end)).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli();}
+    static boolean ended(String date,String end,long now){return now>=endMillis(date,end);}
     static String key(String course,String date,int node,int step){return "course:"+UUID.nameUUIDFromBytes((course+"|"+date+"|"+node+"|"+step).getBytes(StandardCharsets.UTF_8));}
 }
