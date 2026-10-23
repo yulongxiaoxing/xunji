@@ -5,8 +5,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,25 +22,24 @@ final class EventPolicy {
     }
     static boolean category(String category){return "活动".equals(category)||"考试".equals(category)||"竞赛".equals(category);}
     static Interval fromReceived(String text,long received){
-        if(text==null||DATE_RANGE.matcher(text).find()||TIME_ALTERNATIVE.matcher(text).find())return null;
+        text=TimeText.normalize(text);Interval clocks=clockRange(text);if(clocks==null)return null;
         LocalDate reference=Instant.ofEpochMilli(received).atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
-        Matcher ranges=RANGE.matcher(text);StringBuffer dates=new StringBuffer();List<String[]> clocks=new ArrayList<>();
-        while(ranges.find()){clocks.add(new String[]{ranges.group(1),ranges.group(2)});ranges.appendReplacement(dates," ");}
-        ranges.appendTail(dates);
-        SchedulePolicy.Deadline day=SchedulePolicy.parse(dates.toString().replace("或",""),reference);
-        if(day.date.isEmpty())return null;
-        Set<String> intervals=new LinkedHashSet<>();
-        for(String[] clock:clocks){
-            String from=clock[0],to=clock[1];
-            Matcher period=PERIOD_WORD.matcher(from);
+        String dates=RANGE.matcher(text).replaceAll(" ");
+        SchedulePolicy.Deadline day=SchedulePolicy.parse(dates.replace("或",""),reference);
+        return day.date.isEmpty()?null:new Interval(day.date,clocks.start,clocks.end);
+    }
+    static Interval clockRange(String text){
+        text=TimeText.normalize(text);
+        if(DATE_RANGE.matcher(text).find()||TIME_ALTERNATIVE.matcher(text).find())return null;
+        Set<String> intervals=new LinkedHashSet<>();Matcher ranges=RANGE.matcher(text);LocalDate reference=LocalDate.of(2000,1,1);
+        while(ranges.find()){
+            String from=ranges.group(1),to=ranges.group(2);Matcher period=PERIOD_WORD.matcher(from);
             if(period.find()&&!PERIOD_WORD.matcher(to).find())to=period.group()+to;
             from=from.replace("中午","下午");to=to.replace("中午","下午");
-            SchedulePolicy.Deadline start=SchedulePolicy.parse(day.date+" "+from,reference);
-            SchedulePolicy.Deadline end=SchedulePolicy.parse(day.date+" "+to,reference);
-            if(start.time.isEmpty()||end.time.isEmpty()||!start.date.equals(day.date)||!end.date.equals(day.date)||start.time.compareTo(end.time)>=0)return null;
+            SchedulePolicy.Deadline start=SchedulePolicy.parse("2000-01-01 "+from,reference),end=SchedulePolicy.parse("2000-01-01 "+to,reference);
+            if(start.time.isEmpty()||end.time.isEmpty()||!start.date.equals("2000-01-01")||!end.date.equals("2000-01-01")||start.time.compareTo(end.time)>=0)return null;
             intervals.add(start.time+"|"+end.time);
         }
-        if(intervals.size()!=1)return null;
-        String[] times=intervals.iterator().next().split("\\|");return new Interval(day.date,times[0],times[1]);
+        if(intervals.size()!=1)return null;String[] times=intervals.iterator().next().split("\\|");return new Interval("",times[0],times[1]);
     }
 }

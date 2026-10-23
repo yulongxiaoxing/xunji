@@ -14,7 +14,7 @@ final class CoursePolicy {
     }
     static void validateTime(String start,String end){
         try{if(!start.matches("[0-9]{2}:[0-9]{2}")||!end.matches("[0-9]{2}:[0-9]{2}")||!LocalTime.parse(end).isAfter(LocalTime.parse(start)))throw new IllegalArgumentException();}
-        catch(Exception e){throw new IllegalArgumentException("课程起止时间不完整或无效，未导入");}
+        catch(Exception e){throw new IllegalArgumentException("起止时间不完整或无效，请核对开始和结束时刻");}
     }
     static List<String> repeatDates(String start,String rule,int weekday,String mode,int count,String until){
         if("none".equals(rule))return Collections.singletonList(start);

@@ -149,6 +149,31 @@ public class StoreInstrumentation extends Instrumentation {
   check(dateA.equals("2026-10-24")&&dateB.equals("2026-10-25"),"cached relative interval resolves per source received date");
   String multiSource=store.addManual("测试群","发布人",eventText);store.replaceCards(multiSource,new JSONArray().put(row("作业")).put(row("资料不全的考试").put("category","考试").put("deadline","")));
   JSONArray multiSaved=store.cards();for(int i=0;i<multiSaved.length();i++){JSONObject c=multiSaved.getJSONObject(i);if(c.getString("sourceId").equals(multiSource))check(!c.has("event"),"multi-card source never assigns another task's interval");}
+  reset();String spoken="我明天上午八点半到十一点半有一个图像视觉部的培训会。";long spokenAt=java.time.Instant.parse("2026-10-23T04:00:00Z").toEpochMilli();
+  JSONObject rawMemory=row("图像视觉部培训会").put("category","课程").put("deadline","").put("dueDate","2026-10-24").put("course",new JSONObject().put("startTime","8:30").put("endTime","").put("teacher","").put("location",""));
+  JSONObject normalizedMemory=MemoryNormalizer.normalize(new JSONObject(rawMemory.toString()),rawMemory,spoken,spokenAt,true);
+  check(normalizedMemory.getString("category").equals("活动"),"training meeting is an activity rather than a timetable course");
+  check(normalizedMemory.getString("dueDate").equals("2026-10-24")&&normalizedMemory.getString("dueTime").equals("08:30"),"spoken tomorrow resolves from received date and Chinese clock");
+  check(normalizedMemory.getJSONObject("event").getString("endTime").equals("11:30"),"spoken full interval repairs incomplete model fields");
+  store.saveMemory(spoken,new JSONArray().put(normalizedMemory),spokenAt);JSONObject savedSpoken=store.cards().getJSONObject(0);
+  check(savedSpoken.getString("category").equals("活动")&&savedSpoken.getJSONObject("event").getString("startTime").equals("08:30"),"normalized spoken activity saves with structured calendar interval");
+  check(store.source(savedSpoken.getString("sourceId")).getString("text").equals(spoken),"memory original Chinese input stays unchanged");
+  JSONObject incomplete=MemoryNormalizer.normalize(row("数学课").put("category","课程"),new JSONObject().put("category","课程"),"明天有数学课，具体时间另行通知",spokenAt,true);
+  check(incomplete.getString("category").equals("其他")&&!incomplete.has("course"),"incomplete course can be reviewed without inventing an interval or rejecting the text");
+  JSONObject invented=row("培训会").put("category","活动").put("dueDate","2026-10-24").put("dueTime","08:30").put("event",new JSONObject().put("startTime","08:30").put("endTime","11:30"));
+  JSONObject missing=MemoryNormalizer.normalize(new JSONObject(invented.toString()),invented,"明天有一个培训会，具体时间待通知",spokenAt,true);
+  check(!missing.has("event")&&missing.getString("dueTime").isEmpty(),"model cannot invent start or end when original has no time");
+  JSONObject undated=MemoryNormalizer.normalize(new JSONObject(invented.toString()),invented,"上午八点半到十一点半有培训会，日期待通知",spokenAt,true);
+  check(undated.getString("dueDate").isEmpty()&&!undated.has("event"),"model cannot invent a date when original date is missing");
+  JSONObject ambiguousMemory=MemoryNormalizer.normalize(invented,invented,"明天或后天上午八点到十一点有培训会",spokenAt,true);
+  check(ambiguousMemory.optString("dueDate").isEmpty()&&!ambiguousMemory.has("event"),"alternative dates cannot fall back to model date");
+  JSONObject asciiUndated=MemoryNormalizer.normalize(invented,invented,"8:30-11:30有培训会，日期待定",spokenAt,true);
+  check(asciiUndated.optString("dueDate").isEmpty(),"clock dash is not evidence of a date");
+  JSONObject multiUnknown=MemoryNormalizer.normalize(invented,invented,"买笔，日期时间待定；明天有培训会",spokenAt,false);
+  check(multiUnknown.optString("dueDate").isEmpty()&&multiUnknown.optString("dueTime").isEmpty(),"multi item cannot keep ungrounded model date or time");
+  JSONObject groundedModel=new JSONObject(invented.toString()).put("scheduleText",spoken);
+  JSONObject grounded=MemoryNormalizer.normalize(groundedModel,groundedModel,spoken+"另买笔，日期待定。",spokenAt,false);
+  check(grounded.optString("dueDate").equals("2026-10-24")&&grounded.getJSONObject("event").optString("endTime").equals("11:30"),"multi item exact source quote grounds its own interval");
   boolean privateAudit=false;for(String asset:context.getAssets().list(""))if(asset.equals("private-course.ics"))privateAudit=true;
   if(privateAudit){String userRaw;try(java.io.InputStream in=context.getAssets().open("private-course.ics");java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);userRaw=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);}
     JSONObject audit=IcsImport.parse(userRaw);JSONArray audited=audit.getJSONArray("sessions");int total=audited.length(),monday=0,wednesday=0;java.util.List<String> wedDates=new java.util.ArrayList<>();

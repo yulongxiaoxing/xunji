@@ -84,13 +84,8 @@ public class DemoActivity extends Activity {
             memoryCallback(revision,result);
         }catch(Exception e){try{memoryCallback(revision,new JSONObject().put("ok",false).put("requestToken",requestToken).put("error",e instanceof IllegalArgumentException||e instanceof IllegalStateException?e.getMessage():"整理失败，请检查网络后重试；输入内容仍保留"));}catch(Exception ignored){}}},"xunji-memory-preview").start();
     }
-    private void startDictation(){
-        try{Intent intent=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"zh-CN").putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"说出要记住的事项、时间和地点");startActivityForResult(intent,72);}
-        catch(android.content.ActivityNotFoundException e){web.evaluateJavascript("window.dictationUnavailable && window.dictationUnavailable()",null);}
-    }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
-        if(request==72){if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> matches=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(matches!=null&&!matches.isEmpty())web.evaluateJavascript("window.dictationReady && window.dictationReady("+JSONObject.quote(matches.get(0))+")",null);}else web.evaluateJavascript("window.dictationCancelled && window.dictationCancelled()",null);return;}
         if(request!=71||result!=RESULT_OK||data==null||data.getData()==null)return;
         final android.net.Uri uri=data.getData();final int revision=nextWakeup();
         new Thread(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
@@ -135,7 +130,6 @@ public class DemoActivity extends Activity {
                 SelectionStore selection=new SelectionStore(DemoActivity.this);
                 if(type.equals("memoryPreview")){JSONObject request=new JSONObject(value);previewMemory(request.getString("text"),request.getString("requestToken"));return;}
                 else if(type.equals("memoryCancel")){cancelMemory();return;}
-                else if(type.equals("dictate")){startDictation();return;}
                 else if(type.equals("wakeupPreview")){previewWakeup(value);return;}
                 else if(type.equals("wakeupCancel")){nextWakeup();return;}
                 else if(type.equals("wakeupFile")){Intent file=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(file,71);return;}

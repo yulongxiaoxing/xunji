@@ -22,6 +22,11 @@ $env:JAVA_HOME = Split-Path (Split-Path $javaCompiler)
 foreach ($dir in @('classes', 'test-classes', 'dex', 'gen')) {
     New-Item -ItemType Directory -Path (Join-Path $buildDir $dir) -Force | Out-Null
 }
+# Remove generated class files so deleted anonymous classes cannot remain in the APK.
+$compiledDir = [System.IO.Path]::GetFullPath((Join-Path $buildDir 'classes'))
+$buildPrefix = [System.IO.Path]::GetFullPath($buildDir).TrimEnd('\') + '\'
+if (-not $compiledDir.StartsWith($buildPrefix, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Compiled classes directory is outside the build directory.' }
+Get-ChildItem -LiteralPath $compiledDir -Filter '*.class' -File -Recurse | ForEach-Object { Remove-Item -LiteralPath $_.FullName }
 $policy = Join-Path $probeRoot 'src\cn\xunji\probe\CapturePolicy.java'
 $selectionPolicy = Join-Path $probeRoot 'src\cn\xunji\probe\SelectionPolicy.java'
 $test = Join-Path $probeRoot 'tests\CapturePolicyTest.java'
@@ -42,12 +47,12 @@ Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes"
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.DeadlinePolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\CoursePolicy.java","$probeRoot\tests\CoursePolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.CoursePolicyTest')
-Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/EventPolicy.java","$probeRoot/tests/EventPolicyTest.java")
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/EventPolicy.java","$probeRoot/src/cn/xunji/probe/TimeText.java","$probeRoot/tests/EventPolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir/test-classes",'cn.xunji.probe.EventPolicyTest')
 Invoke-Checked "$toolsDir\aapt2.exe" @('compile', '--dir', "$probeRoot\res", '-o', "$buildDir\resources.zip")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
-    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '30',
-    '--version-name', '0.29-dated-agenda', "$buildDir\resources.zip")
+    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '34',
+    '--version-name', '0.33-memory-interpretation', "$buildDir\resources.zip")
 $sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen" -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 Invoke-Checked $javaCompiler (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options',
