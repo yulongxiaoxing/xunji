@@ -44,8 +44,8 @@ Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes"
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.CoursePolicyTest')
 Invoke-Checked "$toolsDir\aapt2.exe" @('compile', '--dir', "$probeRoot\res", '-o', "$buildDir\resources.zip")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
-    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '26',
-    '--version-name', '0.25-course-calendar', "$buildDir\resources.zip")
+    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '27',
+    '--version-name', '0.26-hourly-week', "$buildDir\resources.zip")
 $sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen" -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 Invoke-Checked $javaCompiler (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options',

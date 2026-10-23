@@ -15,7 +15,7 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 8); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 9); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0, course_data TEXT NOT NULL DEFAULT '', event_data TEXT NOT NULL DEFAULT '', auto_completed INTEGER NOT NULL DEFAULT 0)");
@@ -50,6 +50,11 @@ final class CardStore extends SQLiteOpenHelper {
         if(oldVersion<8)db.execSQL("ALTER TABLE cards ADD COLUMN auto_completed INTEGER NOT NULL DEFAULT 0");
         if(oldVersion<8)try(Cursor c=db.rawQuery("SELECT id,course_data FROM cards WHERE category='课程' AND user_modified=0 AND course_data!=''",null)){
             while(c.moveToNext())try{JSONObject course=new JSONObject(c.getString(1));if(IcsImport.hydrateWakeupFacts(course)){ContentValues v=new ContentValues();v.put("course_data",course.toString());db.update("cards",v,"id=?",new String[]{c.getString(0)});}}catch(Exception ignored){}
+        }
+        if(oldVersion<9)try(Cursor c=db.rawQuery("SELECT id,due_date,course_data FROM cards WHERE category='课程' AND state='done' AND due_date!='' AND course_data!=''",null)){
+            long now=System.currentTimeMillis();while(c.moveToNext())try{
+                if(!CoursePolicy.ended(c.getString(1),new JSONObject(c.getString(2)).getString("endTime"),now)){ContentValues v=new ContentValues();v.put("state","todo");v.put("auto_completed",0);db.update("cards",v,"id=?",new String[]{c.getString(0)});}
+            }catch(Exception ignored){}
         }
     }
 
@@ -145,12 +150,19 @@ final class CardStore extends SQLiteOpenHelper {
     }
     synchronized void cardState(String id, String state) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
-        try(Cursor c=db.rawQuery("SELECT state,previous_state FROM cards WHERE id=?",new String[]{id})){
+        try(Cursor c=db.rawQuery("SELECT state,previous_state,category,due_date,course_data FROM cards WHERE id=?",new String[]{id})){
             if(!c.moveToFirst())throw new IllegalArgumentException("事项不存在，请刷新后重试");
             String current=c.getString(0);ContentValues value=new ContentValues();
+            if("done".equals(state)&&"课程".equals(c.getString(2))){
+                try{if(!CoursePolicy.ended(c.getString(3),new JSONObject(c.getString(4)).getString("endTime"),System.currentTimeMillis()))throw new IllegalArgumentException("课程尚未下课，不能提前标为完成");}
+                catch(org.json.JSONException|java.time.DateTimeException e){throw new IllegalArgumentException("课程起止时间不完整，请先核对");}
+            }
             if("restore".equals(state)){
                 if(!"deleted".equals(current))throw new IllegalArgumentException("事项不在回收站");
                 value.put("state",CardPolicy.restoreState(c.getString(1)));
+                if("done".equals(value.getAsString("state"))&&"课程".equals(c.getString(2)))try{
+                    if(!CoursePolicy.ended(c.getString(3),new JSONObject(c.getString(4)).getString("endTime"),System.currentTimeMillis())){value.put("state","todo");value.put("auto_completed",0);}
+                }catch(org.json.JSONException|java.time.DateTimeException e){throw new IllegalArgumentException("课程起止时间不完整，请先核对");}
             }else{
                 value.put("state",CardPolicy.transition(current,state));
                 if("deleted".equals(state))value.put("previous_state",current);
@@ -197,7 +209,7 @@ final class CardStore extends SQLiteOpenHelper {
             if("课程".equals(row.optString("category"))||value.containsKey("event_data")&&!value.getAsString("event_data").isEmpty())value.put("schedule_override",1);
             else if(row.optBoolean("automaticDeadline")||(!changed&&c.getInt(2)==0))putAutomatic(value,value.getAsString("deadline"),c.getLong(3));
             else if(changed)value.put("schedule_override",1);
-            if("课程".equals(row.optString("category"))&&"done".equals(c.getString(4))&&c.getInt(5)!=0&&CoursePolicy.endMillis(row.getString("dueDate"),row.getJSONObject("course").getString("endTime"))>System.currentTimeMillis()){
+            if("课程".equals(row.optString("category"))&&"done".equals(c.getString(4))&&CoursePolicy.endMillis(row.getString("dueDate"),row.getJSONObject("course").getString("endTime"))>System.currentTimeMillis()){
                 value.put("state","todo");value.put("auto_completed",0);
             }
             if(db.update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
