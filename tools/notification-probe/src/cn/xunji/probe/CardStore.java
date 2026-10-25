@@ -261,7 +261,9 @@ final class CardStore extends SQLiteOpenHelper {
             if(row.has("event"))manualBody.append("\n").append(row.getJSONObject("event").toString());
             if(row.has("repeat"))manualBody.append("\n").append(row.getJSONObject("repeat").toString());
             if(sharedSource==null){if(!insertSource(sourceId,"手动新建","",manualBody.toString(),System.currentTimeMillis()))throw new IllegalStateException("新建失败");state(sourceId,"ready","");}
-            if("课程".equals(row.optString("category"))||value.getAsString("due_date")!=null&&!value.getAsString("due_date").isEmpty())value.put("schedule_override",1);
+            // Memory dates were already normalized and confirmed in preview, including unknown dates.
+            // Never reinterpret a model's partial deadline while saving that shared memory source.
+            if(sharedSource!=null||"课程".equals(row.optString("category"))||value.getAsString("due_date")!=null&&!value.getAsString("due_date").isEmpty())value.put("schedule_override",1);
             else putAutomatic(value,value.getAsString("deadline"),sharedSource==null?System.currentTimeMillis():source(sharedSource).getLong("receivedAt"));
             value.put("id",id);value.put("source_id",sourceId);value.put("state","todo");
             value.put("extraction_title",row.getString("title"));

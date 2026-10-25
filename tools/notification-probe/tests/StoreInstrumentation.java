@@ -174,6 +174,14 @@ public class StoreInstrumentation extends Instrumentation {
   JSONObject groundedModel=new JSONObject(invented.toString()).put("scheduleText",spoken);
   JSONObject grounded=MemoryNormalizer.normalize(groundedModel,groundedModel,spoken+"另买笔，日期待定。",spokenAt,false);
   check(grounded.optString("dueDate").equals("2026-10-24")&&grounded.getJSONObject("event").optString("endTime").equals("11:30"),"multi item exact source quote grounds its own interval");
+  JSONObject ambiguousModel=new JSONObject(invented.toString()).put("deadline","明天");
+  String alternatives="明天或后天上午八点到十一点有培训会";
+  JSONObject ambiguousPreview=MemoryNormalizer.normalize(ambiguousModel,ambiguousModel,alternatives,spokenAt,true);
+  check(ambiguousPreview.optString("dueDate").isEmpty(),"ambiguous preview has no definite date");
+  String ambiguousId=store.saveMemory(alternatives,new JSONArray().put(ambiguousPreview),spokenAt).getString(0);
+  JSONObject ambiguousSaved=null;JSONArray afterAmbiguous=store.cards();for(int i=0;i<afterAmbiguous.length();i++)if(afterAmbiguous.getJSONObject(i).getString("id").equals(ambiguousId))ambiguousSaved=afterAmbiguous.getJSONObject(i);
+  check(ambiguousSaved!=null&&ambiguousSaved.optString("dueDate").isEmpty()&&ambiguousSaved.optString("dueTime").isEmpty(),"memory save preserves unknown date from preview instead of re-parsing model deadline");
+  store.close();store=new CardStore(context);JSONArray reopenedMemory=store.cards();for(int i=0;i<reopenedMemory.length();i++)if(reopenedMemory.getJSONObject(i).getString("id").equals(ambiguousId))check(reopenedMemory.getJSONObject(i).optString("dueDate").isEmpty(),"reopening cannot backfill rejected memory date");
   boolean privateAudit=false;for(String asset:context.getAssets().list(""))if(asset.equals("private-course.ics"))privateAudit=true;
   if(privateAudit){String userRaw;try(java.io.InputStream in=context.getAssets().open("private-course.ics");java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);userRaw=new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);}
     JSONObject audit=IcsImport.parse(userRaw);JSONArray audited=audit.getJSONArray("sessions");int total=audited.length(),monday=0,wednesday=0;java.util.List<String> wedDates=new java.util.ArrayList<>();
