@@ -8,6 +8,10 @@
 
 **交付版本：v0.36（Android versionCode 37）** · **平台：Android 9 及以上** · [项目仓库](https://github.com/yulongxiaoxing/xunji)
 
+从这里开始：[完整运行教程](docs/RUNNING.md) · [可复制的通知与课表示例](examples/delivery/README.md) · [3—5分钟演示视频脚本](docs/VIDEO.md)
+
+也可单独下载[教程与示例压缩包](https://github.com/yulongxiaoxing/xunji/releases/download/v0.36/Xunji-v0.36-guide.zip)，包含可直接选择导入的ICS文件与六条通知文本。
+
 ## 下载与安装
 
 交付包包含可直接安装的 APK、本 README、界面截图和项目源码。前往 [v0.36 交付版下载页](https://github.com/yulongxiaoxing/xunji/releases/tag/v0.36)获取：
@@ -46,6 +50,7 @@
 - 独立事项可以拆分；没有可执行事项的消息可以不生成卡片。
 - “口头记忆”提供文字输入框，支持键入、粘贴，也可自行使用系统输入法语音输入。应用不调用麦克风录音。
 - 点击整理后先预览，再确认加入待办。缺失或存在歧义的信息保留待确认，网络失败时保留输入和原文。
+- 也可通过“今日右上角＋→粘贴通知原文”保存完整通知，自动整理后进入待确认收件箱；这条入口无需QQ连接，适合用示例体验完整决策流程。
 
 例如输入：
 
