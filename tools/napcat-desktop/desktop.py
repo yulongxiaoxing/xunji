@@ -12,7 +12,7 @@ BASE = Path(__file__).resolve().parents[2]
 STATE = BASE / '.codex' / 'napcat-desktop'
 RUNTIME = STATE / 'runtime'
 ADB = Path(os.environ['LOCALAPPDATA']) / 'Android/Sdk/platform-tools/adb.exe'
-SERIAL = '61d20d8'
+SERIAL = os.environ.get('XUNJI_ADB_SERIAL', '')
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 
@@ -26,8 +26,18 @@ def owned_processes():
     return value if isinstance(value, list) else [value]
 
 
+def device_serial():
+    if SERIAL:
+        return SERIAL
+    output = subprocess.check_output([str(ADB), 'devices'], text=True, encoding='utf-8', errors='replace')
+    devices = [line.split()[0] for line in output.splitlines() if len(line.split()) == 2 and line.split()[1] == 'device']
+    if len(devices) != 1:
+        raise RuntimeError('Connect one authorized phone, or select a device with --serial SERIAL')
+    return devices[0]
+
+
 def link():
-    subprocess.run([str(ADB), '-s', SERIAL, 'reverse', 'tcp:3000', 'tcp:13001'], check=True)
+    subprocess.run([str(ADB), '-s', device_serial(), 'reverse', 'tcp:3000', 'tcp:13001'], check=True)
     print('USB route: phone 3000 -> desktop 13001')
 
 
@@ -81,8 +91,9 @@ def start():
     module.write_text(source, encoding='utf-8')
     credential_file = STATE / 'local-secrets.json'
     if not credential_file.exists():
-        old = json.loads((STATE.parent / 'napcat-setup/local-secrets.json').read_text())
-        credential_file.write_text(json.dumps({'onebot': old['onebot'], 'webui': secrets.token_hex(24)}))
+        legacy = STATE.parent / 'napcat-setup/local-secrets.json'
+        onebot = json.loads(legacy.read_text())['onebot'] if legacy.exists() else secrets.token_hex(24)
+        credential_file.write_text(json.dumps({'onebot': onebot, 'webui': secrets.token_hex(24)}))
     tokens = json.loads(credential_file.read_text())
     config = RUNTIME / 'napcat/config'
     config.mkdir(parents=True, exist_ok=True)
@@ -128,7 +139,10 @@ def stop():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['start', 'status', 'link', 'stop'])
+    parser.add_argument('--serial', default=SERIAL, help='ADB device serial; auto-selects the only authorized device otherwise')
+    parser.add_argument('--adb', type=Path, default=ADB, help='Path to adb.exe when the SDK is installed elsewhere')
     args = parser.parse_args()
+    SERIAL, ADB = args.serial, args.adb
     try:
         {'start': start, 'status': status, 'link': link, 'stop': stop}[args.action]()
     except Exception as error:
