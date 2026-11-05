@@ -43,16 +43,19 @@
 
 ## 界面参考
 
-以下为 v0.36 的历史界面截图，使用虚构数据。新版录屏请从 v0.58 演示版取景。
+以下截图来自寻迹 v0.58 黑客松演示版，使用虚构数据。周表展示课程和工作坊的时间重叠，成长档案展示由已完成事项建立的经历。
 
 <table>
   <tr>
-    <td align="center">今日<br><img src="docs/images/today.png" width="200" alt="今日视图"></td>
-    <td align="center">收件箱<br><img src="docs/images/inbox.png" width="200" alt="收件箱卡片"></td>
+    <td align="center">今日<br><img src="docs/images/today.png" width="200" alt="按日期查看课程与待办"></td>
+    <td align="center">收件箱<br><img src="docs/images/inbox.png" width="200" alt="带来源、时间和要求的待确认通知卡片"></td>
   </tr>
   <tr>
-    <td align="center">周表<br><img src="docs/images/week.png" width="200" alt="周日程"></td>
-    <td align="center">月表<br><img src="docs/images/month.png" width="200" alt="月日程"></td>
+    <td align="center">周表<br><img src="docs/images/week.png" width="200" alt="在时间轴上查看课程与活动冲突"></td>
+    <td align="center">月表<br><img src="docs/images/month.png" width="200" alt="按日期查看当月课程与活动"></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">成长档案<br><img src="docs/images/growth.png" width="200" alt="校园活动分类中的设计社作品复盘经历"></td>
   </tr>
 </table>
 
