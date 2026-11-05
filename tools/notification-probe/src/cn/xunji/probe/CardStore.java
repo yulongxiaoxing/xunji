@@ -15,12 +15,14 @@ import java.util.List;
 
 /** Durable real sources, cards and versioned content extraction results. */
 final class CardStore extends SQLiteOpenHelper {
-    CardStore(Context context) { super(context, "xunji-cards.db", null, 10); }
+    CardStore(Context context) { super(context, "xunji-cards.db", null, 13); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE sources(id TEXT PRIMARY KEY, group_name TEXT NOT NULL, publisher TEXT NOT NULL, body TEXT NOT NULL, received INTEGER, state TEXT, error TEXT, extraction_version INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE cards(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, category TEXT, title TEXT, requirements TEXT, deadline TEXT, state TEXT, user_modified INTEGER NOT NULL DEFAULT 0, extraction_title TEXT, previous_state TEXT, due_date TEXT NOT NULL DEFAULT '', due_time TEXT NOT NULL DEFAULT '', schedule_override INTEGER NOT NULL DEFAULT 0, course_data TEXT NOT NULL DEFAULT '', event_data TEXT NOT NULL DEFAULT '', auto_completed INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX cards_source ON cards(source_id)");
         createCache(db);
+        GrowthStore.create(db);
+        GrowthCandidateStore.create(db);
     }
     private void createCache(SQLiteDatabase db){db.execSQL("CREATE TABLE IF NOT EXISTS extraction_cache(content_key TEXT PRIMARY KEY, version INTEGER NOT NULL, cards TEXT NOT NULL)");}
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -57,6 +59,9 @@ final class CardStore extends SQLiteOpenHelper {
             }catch(Exception ignored){}
         }
         if(oldVersion<10)backfillEventIntervals(db);
+        if(oldVersion<11)GrowthStore.create(db);
+        if(oldVersion>=11&&oldVersion<12)GrowthStore.upgradeV12(db);
+        if(oldVersion<13)GrowthCandidateStore.create(db);
     }
 
     private void backfillEventIntervals(SQLiteDatabase db){
@@ -90,7 +95,17 @@ final class CardStore extends SQLiteOpenHelper {
         String id = UUID.randomUUID().toString(); insertSource(id, group, publisher, text, System.currentTimeMillis()); return id;
     }
     boolean addNapCat(String account,String groupId,String messageId,String group,String publisher,String text,long time){return insertSource("napcat:"+digest(account+"|"+groupId+"|"+messageId),group,publisher,text,time);}
-    private boolean insertSource(String id, String group, String publisher, String body, long received) {
+    boolean ensureNapCat(String account,String groupId,String messageId,String group,String publisher,String text,long time){
+        boolean added=addNapCat(account,groupId,messageId,group,publisher,text,time);
+        if(!added){String id="napcat:"+digest(account+"|"+groupId+"|"+messageId);try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM sources WHERE id=?",new String[]{id})){if(!c.moveToFirst())throw new IllegalStateException("原文尚未保存，进度未推进");}}
+        return added;
+    }
+    JSONObject napCatStats()throws Exception{
+        JSONObject stats=new JSONObject().put("pending",0).put("processing",0).put("ready",0).put("error",0);
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT state,COUNT(*) FROM sources WHERE id LIKE 'napcat:%' GROUP BY state",null)){while(c.moveToNext())stats.put(c.getString(0),c.getInt(1));}
+        return stats;
+    }
+    boolean insertSource(String id, String group, String publisher, String body, long received) {
         ContentValues value = new ContentValues(); value.put("id", id); value.put("group_name", group);
         value.put("publisher", publisher); value.put("body", body); value.put("received", received);
         value.put("state", "pending"); value.put("error", "");
@@ -133,18 +148,23 @@ final class CardStore extends SQLiteOpenHelper {
     }
     synchronized int completeEndedCourses(long now){
         SQLiteDatabase db=getWritableDatabase();int changed=0;db.beginTransaction();
-        try(Cursor c=db.rawQuery("SELECT id,due_date,course_data FROM cards WHERE category='课程' AND state='todo' AND due_date!='' AND course_data!=''",null)){
+        try(Cursor c=db.rawQuery("SELECT id,category,due_date,course_data,event_data,due_time FROM cards WHERE state='todo' AND due_date!=''",null)){
             while(c.moveToNext())try{
-                JSONObject course=new JSONObject(c.getString(2));if(!CoursePolicy.ended(c.getString(1),course.getString("endTime"),now))continue;
+                long end=completionEnd(c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5));if(end==Long.MAX_VALUE||now<end)continue;
                 ContentValues v=new ContentValues();v.put("state","done");v.put("auto_completed",1);changed+=db.update("cards",v,"id=? AND state='todo'",new String[]{c.getString(0)});
             }catch(org.json.JSONException|java.time.DateTimeException ignored){}
             db.setTransactionSuccessful();return changed;
         }finally{db.endTransaction();}
     }
     synchronized long nextCourseEnd(long now){
-        long next=Long.MAX_VALUE;try(Cursor c=getReadableDatabase().rawQuery("SELECT due_date,course_data FROM cards WHERE category='课程' AND state='todo' AND due_date!='' AND course_data!=''",null)){
-            while(c.moveToNext())try{long end=CoursePolicy.endMillis(c.getString(0),new JSONObject(c.getString(1)).getString("endTime"));if(end>now&&end<next)next=end;}catch(Exception ignored){}
+        long next=Long.MAX_VALUE;try(Cursor c=getReadableDatabase().rawQuery("SELECT category,due_date,course_data,event_data,due_time FROM cards WHERE state='todo' AND due_date!=''",null)){
+            while(c.moveToNext())try{long end=completionEnd(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4));if(end>now&&end<next)next=end;}catch(Exception ignored){}
         }return next;
+    }
+    private long completionEnd(String category,String date,String course,String event)throws org.json.JSONException{return completionEnd(category,date,course,event,"");}
+    private long completionEnd(String category,String date,String course,String event,String dueTime)throws org.json.JSONException{
+        String raw="课程".equals(category)?course:event;if(raw==null||raw.isEmpty())return ScheduleCompletionPolicy.deadlineMillis(category,date,dueTime);
+        JSONObject info=new JSONObject(raw);return ScheduleCompletionPolicy.endMillis(category,date,info.optString("startTime"),info.optString("endTime"));
     }
     void state(String id, String state, String error) {
         ContentValues value = new ContentValues(); value.put("state", state); value.put("error", error);
@@ -234,6 +254,9 @@ final class CardStore extends SQLiteOpenHelper {
             if("课程".equals(row.optString("category"))&&"done".equals(c.getString(4))&&CoursePolicy.endMillis(row.getString("dueDate"),row.getJSONObject("course").getString("endTime"))>System.currentTimeMillis()){
                 value.put("state","todo");value.put("auto_completed",0);
             }
+            else if(c.getInt(5)!=0&&"done".equals(c.getString(4))&&completionEnd(row.optString("category"),row.optString("dueDate"),row.has("course")?row.getJSONObject("course").toString():"",row.has("event")?row.getJSONObject("event").toString():"",row.optString("dueTime"))>System.currentTimeMillis()){
+                value.put("state","todo");value.put("auto_completed",0);
+            }
             if(db.update("cards",value,"id=? AND state!='deleted'",new String[]{row.getString("id")})!=1)throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
@@ -245,6 +268,7 @@ final class CardStore extends SQLiteOpenHelper {
         }
         ContentValues value=new ContentValues();
         value.put("due_date",date);value.put("due_time",time);value.put("schedule_override",1);value.put("user_modified",1);
+        if(ScheduleCompletionPolicy.deadlineMillis("其他",date,time)>System.currentTimeMillis())getWritableDatabase().execSQL("UPDATE cards SET state='todo',auto_completed=0 WHERE id=? AND state='done' AND auto_completed=1",new Object[]{id});
         if(getWritableDatabase().update("cards",value,"id=? AND state!='deleted'",new String[]{id})!=1)
             throw new IllegalArgumentException("事项不存在或已删除，请刷新后重试");
     }

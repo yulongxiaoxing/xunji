@@ -1,0 +1,47 @@
+/* Sage applies to today and the workspace only. Schedule/growth retain their original palettes, including dialogs and navigation. */
+:where(body:not(.schedule-screen):not(.growth-screen)),
+:where(body:not(.schedule-screen):not(.growth-screen)).today-screen {
+ --brand:#92bea0;
+ --bg:#f2f7f3;
+ --paper:#fcfefd;
+ --ink:#203e2c;
+ --muted:#526b59;
+
+ --blue:#326650;
+ --soft:#dcebdd;
+ --line:#d5e2d8;
+ --warm:#a54a2e;
+}
+:where(body:not(.schedule-screen):not(.growth-screen)) {accent-color:var(--blue)}
+:where(body:not(.schedule-screen):not(.growth-screen)) button:focus-visible,
+:where(body:not(.schedule-screen):not(.growth-screen)) input:focus-visible,
+:where(body:not(.schedule-screen):not(.growth-screen)) textarea:focus-visible,
+:where(body:not(.schedule-screen):not(.growth-screen)) select:focus-visible {outline-color:var(--blue)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .group-tabs,
+:where(body:not(.schedule-screen):not(.growth-screen)) .workspace-nav {background:#e2ece4}
+:where(body:not(.schedule-screen):not(.growth-screen)) .notice {color:#405c49;background:#edf5ee;border-color:var(--line)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .source strong {color:#405c49}
+:where(body:not(.schedule-screen):not(.growth-screen)) .tag {background:var(--soft);color:var(--blue)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .requirements,
+:where(body:not(.schedule-screen):not(.growth-screen)) .deadline {color:var(--muted)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .deadline {background:#edf4ee}
+:where(body:not(.schedule-screen):not(.growth-screen)) .deadline .clock {color:#5b7c65}
+:where(body:not(.schedule-screen):not(.growth-screen)) .empty {background:var(--paper);border-color:#b8cfbf}
+:where(body:not(.schedule-screen):not(.growth-screen)) .empty svg {color:#64856c}
+:where(body:not(.schedule-screen):not(.growth-screen)) input.field,
+:where(body:not(.schedule-screen):not(.growth-screen)) textarea,
+:where(body:not(.schedule-screen):not(.growth-screen)) .field,
+:where(body:not(.schedule-screen):not(.growth-screen)) select.field {border-color:#c4d7c9}
+:where(body:not(.schedule-screen):not(.growth-screen)) input::placeholder,
+:where(body:not(.schedule-screen):not(.growth-screen)) textarea::placeholder {color:#64796a;opacity:1}
+:where(body:not(.schedule-screen):not(.growth-screen)) .bottom {background:#f5faf6ed}
+:where(body:not(.schedule-screen):not(.growth-screen)) .bottom button {color:var(--muted)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .bottom .active {color:var(--blue);background:var(--soft)}
+:where(body:not(.schedule-screen):not(.growth-screen)) .toast {background:var(--ink)}
+:where(body:not(.schedule-screen):not(.growth-screen)) dialog {background:var(--paper);box-shadow:0 20px 80px #203e2c30}
+:where(body:not(.schedule-screen):not(.growth-screen)) dialog::backdrop {background:#203e2c65}
+:where(body:not(.schedule-screen):not(.growth-screen)) .date-agenda.is-today {border-color:#a8c7b0;box-shadow:0 4px 18px #32665008}
+:where(body:not(.schedule-screen):not(.growth-screen)).today-screen {background:var(--bg)}
+:where(body:not(.schedule-screen):not(.growth-screen)).today-screen .bottom {background:#f5faf6ed}
+:where(body:not(.schedule-screen):not(.growth-screen)).inbox-review .bottom button {color:var(--muted)}
+:where(body:not(.schedule-screen):not(.growth-screen)).inbox-review .bottom .active {color:var(--blue)}

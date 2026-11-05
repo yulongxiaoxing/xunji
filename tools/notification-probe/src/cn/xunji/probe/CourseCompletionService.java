@@ -10,6 +10,7 @@ public class CourseCompletionService extends JobService {
     static void schedule(Context context){
         long now=System.currentTimeMillis(),next;
         try(CardStore store=new CardStore(context)){store.completeEndedCourses(now);next=store.nextCourseEnd(now);}
+        GrowthCandidateService.schedule(context);
         JobScheduler scheduler=context.getSystemService(JobScheduler.class);if(scheduler==null)return;
         if(next==Long.MAX_VALUE){scheduler.cancel(JOB);return;}
         JobInfo pending=scheduler.getPendingJob(JOB);if(pending!=null&&pending.getExtras().getLong("end")==next)return;

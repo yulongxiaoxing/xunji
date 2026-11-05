@@ -1,0 +1,9 @@
+.growth-join-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding:8px 0}
+.growth-memory-button{min-height:42px;padding:8px 12px;border-radius:10px;background:#326650;color:white;font-size:14px;font-weight:600;white-space:nowrap}
+#growthMemoryForm h2{margin-top:0;font-size:23px}
+#growthMemoryBody{min-height:190px;margin-top:8px}
+#growthMemoryForm .toolbar{display:flex;gap:12px}
+#growthMemoryForm .toolbar>button{flex:1}
+#growthMemoryOriginal{margin:16px 0}
+#growthMemoryOriginal .original{font-size:14px}
+@media(max-width:400px){.growth-join{flex-wrap:wrap;gap:0;padding-top:12px}.growth-join-actions{width:100%;justify-content:flex-start}.growth-join-actions .growth-join-button{padding-left:8px}}

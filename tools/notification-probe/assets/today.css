@@ -1,0 +1,46 @@
+/* A quiet agenda surface, scoped so the rest of Xunji keeps its current identity. */
+body.today-screen{
+ --bg:#f8faf8;--paper:#ffffff;--ink:#1e2b24;--muted:#657269;
+ --blue:#326650;--soft:#eaf2ed;--line:#e0e7e2;
+ background:var(--bg);color:var(--ink);
+ font-family:"MiSans","HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+ -webkit-font-smoothing:antialiased;
+}
+.today-screen .wrap{max-width:700px;padding:26px 24px 116px}
+.today-screen header{padding-bottom:4px}
+.today-screen .brand{font-size:18px;letter-spacing:1px;font-weight:650}
+.today-screen .brand small,.today-screen .brandline .mark{display:none}
+.today-screen header .round{width:44px;min-height:44px;border:1px solid var(--line);border-radius:50%;background:var(--paper);color:var(--blue)}
+.today-screen .today-toolbar{display:flex;flex-wrap:wrap;gap:2px;margin:28px 0 34px}
+.today-screen .today-toolbar button{min-height:44px;font-size:13px;white-space:nowrap;border-radius:10px;padding:8px}
+.today-screen .today-toolbar .primary{margin-right:auto;padding:10px 14px;background:var(--blue);color:white;font-weight:600;border:0}
+.today-screen .today-toolbar .textbtn{color:var(--muted)}
+.today-screen .date-agenda{padding:0;margin:0 0 34px;background:transparent;border:0;border-radius:0;box-shadow:none}
+.today-screen .date-agenda-heading{align-items:center;padding-bottom:10px;border:0;gap:12px}
+.today-screen .date-agenda-heading h2{font-size:20px;line-height:1.4;letter-spacing:0;font-weight:600;color:var(--ink)}
+.today-screen .date-agenda.is-today .date-agenda-heading h2{font-size:30px;letter-spacing:-1px;font-weight:650;color:var(--ink)}
+.today-screen .date-agenda-heading>div{gap:1px}
+.today-screen .date-agenda .date-line{font-size:12px;color:var(--muted)}
+.today-screen .date-agenda-heading .small{font-size:12px;color:var(--muted)}
+.today-screen .date-agenda-list{border-top:1px solid var(--line)}
+.today-screen .date-agenda .agenda-item{gap:14px;padding:18px 0;border-bottom:1px solid var(--line);align-items:center}
+.today-screen .date-agenda .agenda-item:last-child{border-bottom:1px solid var(--line)}
+.today-screen .agenda-time{flex:0 0 76px;font-size:13px;font-weight:500;color:var(--blue);font-variant-numeric:tabular-nums;line-height:1.5}
+.today-screen .agenda-time span{font-size:18px;letter-spacing:-.5px}
+.today-screen .agenda-time small{font-size:12px;font-weight:400;color:var(--muted);margin-top:3px}
+.today-screen .agenda-time .agenda-end{font-size:18px;font-weight:500;letter-spacing:-.5px;color:var(--blue);white-space:nowrap}
+.today-screen .agenda-time{text-align:center}
+.today-screen .agenda-time .agenda-end:before{content:"";display:block;width:1px;height:10px;background:#a7bcb0;margin:3px auto 5px}
+.today-screen .agenda-title{font-size:16px;font-weight:550;line-height:1.5;min-height:44px;color:var(--ink)}
+.today-screen .agenda-body p{font-size:12px;line-height:1.6;margin:2px 0;color:var(--muted)}
+.today-screen .date-agenda .agenda-complete{min-width:48px;min-height:44px;padding:8px 10px;background:transparent;color:var(--blue);border:1px solid #ccdcd1;border-radius:22px;font-size:12px;flex-shrink:0}
+.today-screen .date-agenda .tag{font-size:11px;font-weight:500;padding:5px 8px;border-radius:7px;background:var(--soft);color:var(--blue);flex-shrink:0}
+.today-screen .agenda-item.is-done .agenda-title{color:var(--muted)}
+.today-screen .date-agenda .day-empty{padding:18px 0 20px;margin:0;font-size:13px;color:var(--muted)}
+.today-screen .bottom{background:#ffffffed;border-color:var(--line);padding-top:8px;backdrop-filter:blur(12px)}
+.today-screen .bottom button{color:var(--muted);border-radius:12px;font-weight:400}
+.today-screen .bottom .active{background:var(--soft);color:var(--blue);font-weight:600}
+.today-screen button:focus-visible,.today-screen input:focus-visible{outline-color:var(--blue)}
+@media(min-width:650px){.today-screen .wrap{padding-top:36px}.today-screen .today-toolbar{margin-top:32px}.today-screen .agenda-time{flex-basis:80px}.today-screen .date-agenda{margin-bottom:42px}}
+@media(max-width:359px){.today-screen .wrap{padding-inline:18px}.today-screen .today-toolbar button{font-size:12px;padding-inline:7px}.today-screen .today-toolbar .primary{padding-inline:11px}.today-screen .date-agenda .agenda-item{gap:9px}.today-screen .agenda-time{flex-basis:68px}.today-screen .agenda-time span,.today-screen .agenda-time .agenda-end{font-size:16px}.today-screen .agenda-title{font-size:15px}.today-screen .date-agenda .agenda-complete{min-width:44px;padding-inline:8px}}
+@media(prefers-reduced-motion:reduce){.today-screen *{scroll-behavior:auto!important}}

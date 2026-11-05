@@ -1,0 +1,8 @@
+.growth-candidates-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line)}
+.growth-candidates-entry>button{color:var(--blue);padding:8px 0;text-align:left;font-size:15px}
+.growth-candidates-entry strong{display:inline-block;background:var(--soft);border-radius:12px;padding:0 8px;margin-left:4px}
+.growth-candidates-entry>span{font-size:12px;color:var(--muted)}
+.growth-candidate{padding:14px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.growth-candidate h3{font-size:17px;margin:0}
+.growth-candidate .toolbar{margin:8px 0 0;gap:8px}
+.growth-candidate .toolbar button{min-height:44px;font-size:13px}

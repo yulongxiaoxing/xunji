@@ -1,0 +1,62 @@
+{
+  "notifications": [
+    {
+      "group": "视觉创作社（虚构）",
+      "publisher": "社团助教（虚构）",
+      "original": "校园摄影工作坊将于 {tomorrow} 10:30—12:00 在创意楼 203 举行。请自带手机或相机，提前 10 分钟签到。",
+      "card": {
+        "category": "活动",
+        "title": "校园摄影工作坊",
+        "requirements": ["地点：创意楼 203", "自带手机或相机", "提前 10 分钟签到"],
+        "deadline": "{tomorrow} 10:30—12:00"
+      }
+    },
+    {
+      "group": "校园创客组（虚构）",
+      "publisher": "赛事志愿者（虚构）",
+      "original": "校园创客挑战赛于 {dayAfter} 14:00—16:00 在创新工坊进行路演，每组准备一份 3 分钟展示。",
+      "card": {
+        "category": "竞赛",
+        "title": "校园创客挑战赛路演",
+        "requirements": ["地点：创新工坊", "每组准备 3 分钟展示"],
+        "deadline": "{dayAfter} 14:00—16:00"
+      }
+    },
+    {
+      "group": "视觉设计课堂（虚构）",
+      "publisher": "课程助教（虚构）",
+      "original": "请于 {dayAfter} 20:00 前提交版式练习，上传一页 PDF，文件名使用小组名称。",
+      "card": {
+        "category": "作业",
+        "title": "提交版式练习",
+        "requirements": ["上传一页 PDF", "文件名使用小组名称"],
+        "deadline": "{dayAfter} 20:00"
+      }
+    }
+  ],
+  "agenda": [
+    {
+      "category": "课程",
+      "title": "视觉设计基础",
+      "requirements": ["虚构课表"],
+      "dueDate": "{tomorrow}",
+      "course": {
+        "startTime": "10:10",
+        "endTime": "11:50",
+        "location": "教学楼 B204",
+        "teacher": "林老师（虚构）"
+      }
+    },
+    {
+      "category": "活动",
+      "title": "设计社作品复盘",
+      "requirements": ["虚构活动，可用于体验完成后建立成长经历"],
+      "dueDate": "{tomorrow}",
+      "event": {
+        "startTime": "15:00",
+        "endTime": "16:00",
+        "location": "创意楼 103"
+      }
+    }
+  ]
+}

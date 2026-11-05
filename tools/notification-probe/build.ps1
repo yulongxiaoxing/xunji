@@ -1,7 +1,12 @@
-param([string]$SdkRoot = "$env:LOCALAPPDATA\Android\Sdk")
+param(
+    [string]$SdkRoot = "$env:LOCALAPPDATA\Android\Sdk",
+    [ValidateSet('Actual', 'Demo')][string]$Edition = 'Actual'
+)
 $ErrorActionPreference = 'Stop'
 $probeRoot = $PSScriptRoot
 $buildDir = Join-Path $probeRoot 'build'
+$isDemo = $Edition -eq 'Demo'
+if ($isDemo) { $buildDir = Join-Path $buildDir 'demo' }
 $toolsDir = Join-Path $SdkRoot 'build-tools\36.0.0'
 $platformJar = Join-Path $SdkRoot 'platforms\android-37.0\android.jar'
 if (-not (Test-Path -LiteralPath $platformJar)) {
@@ -37,6 +42,10 @@ Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.Capt
 Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.OverlayRefreshTest')
 Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.MessageTextTest')
 Invoke-Checked $javaTool @('-cp', "$buildDir\test-classes", 'cn.xunji.probe.NapCatPolicyTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\NapCatBackfill.java","$probeRoot\tests\NapCatBackfillTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.NapCatBackfillTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\ScheduleCompletionPolicy.java","$probeRoot\src\cn\xunji\probe\CoursePolicy.java","$probeRoot\tests\ScheduleCompletionPolicyTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.ScheduleCompletionPolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\tests\ExtractionPolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.ExtractionPolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\tests\CardPolicyTest.java")
@@ -49,11 +58,26 @@ Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir\test-classes"
 Invoke-Checked $javaTool @('-cp',"$buildDir\test-classes",'cn.xunji.probe.CoursePolicyTest')
 Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/EventPolicy.java","$probeRoot/src/cn/xunji/probe/TimeText.java","$probeRoot/tests/EventPolicyTest.java")
 Invoke-Checked $javaTool @('-cp',"$buildDir/test-classes",'cn.xunji.probe.EventPolicyTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/GrowthPolicy.java","$probeRoot/tests/GrowthPolicyTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir/test-classes",'cn.xunji.probe.GrowthPolicyTest')
+Invoke-Checked $javaCompiler @('-encoding','UTF-8','-d',"$buildDir/test-classes","$probeRoot/src/cn/xunji/probe/SchedulePolicy.java","$probeRoot/src/cn/xunji/probe/GrowthPolicy.java","$probeRoot/src/cn/xunji/probe/GrowthMemoryPolicy.java","$probeRoot/tests/GrowthMemoryPolicyTest.java")
+Invoke-Checked $javaTool @('-cp',"$buildDir/test-classes",'cn.xunji.probe.GrowthMemoryPolicyTest')
 Invoke-Checked "$toolsDir\aapt2.exe" @('compile', '--dir', "$probeRoot\res", '-o', "$buildDir\resources.zip")
-Invoke-Checked "$toolsDir\aapt2.exe" @('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
-    '--manifest', "$probeRoot\AndroidManifest.xml", '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '37',
-    '--version-name', '0.36-delivery-date-consistency', "$buildDir\resources.zip")
-$sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen" -Filter '*.java' -Recurse |
+$manifest = Join-Path $probeRoot 'AndroidManifest.xml'
+$editionArgs = @()
+$editionSources = Join-Path $probeRoot 'editions\actual'
+if ($isDemo) {
+    [xml]$demoManifest = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
+    $demoManifest.manifest.application.SetAttribute('label', 'http://schemas.android.com/apk/res/android', '寻迹演示版') | Out-Null
+    $manifest = Join-Path $buildDir 'AndroidManifest.xml'
+    $demoManifest.Save($manifest)
+    $editionArgs = @('--rename-manifest-package', 'cn.xunji.probe.demo', '-A', "$probeRoot\editions\demo\assets")
+    $editionSources = Join-Path $probeRoot 'editions\demo'
+}
+Invoke-Checked "$toolsDir\aapt2.exe" (@('link', '-o', "$buildDir\unsigned.apk", '-I', $platformJar,
+    '--manifest', $manifest, '--java', "$buildDir\gen", '-A', "$probeRoot\assets", '--version-code', '59',
+    '--version-name', '0.58', "$buildDir\resources.zip") + $editionArgs)
+$sources = @(Get-ChildItem -LiteralPath "$probeRoot\src", "$buildDir\gen", $editionSources -Filter '*.java' -Recurse |
     Select-Object -ExpandProperty FullName)
 Invoke-Checked $javaCompiler (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options',
     '-classpath', $platformJar, '-d', "$buildDir\classes") + $sources)
@@ -70,7 +94,8 @@ if (-not (Test-Path -LiteralPath $keyStore)) {
     Invoke-Checked $keyTool @('-genkeypair', '-keystore', $keyStore, '-storepass', 'android', '-keypass', 'android',
         '-alias', 'androiddebugkey', '-dname', 'CN=Xunji Local Test', '-keyalg', 'RSA', '-validity', '3650', '-noprompt')
 }
-$apk = Join-Path $buildDir 'xunji-notification-test.apk'
+$apkName = if ($isDemo) { 'xunji-hackathon-demo.apk' } else { 'xunji-notification-test.apk' }
+$apk = Join-Path $buildDir $apkName
 Invoke-Checked "$toolsDir\apksigner.bat" @('sign', '--ks', $keyStore, '--ks-pass', 'pass:android',
     '--key-pass', 'pass:android', '--out', $apk, "$buildDir\aligned.apk")
 Invoke-Checked "$toolsDir\apksigner.bat" @('verify', '--verbose', $apk)

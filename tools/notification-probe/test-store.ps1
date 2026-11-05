@@ -1,6 +1,6 @@
-param([string]$Serial,[string]$SdkRoot="$env:LOCALAPPDATA\Android\Sdk",[string]$IcsFile)
+param([string]$Serial,[string]$SdkRoot="$env:LOCALAPPDATA\Android\Sdk",[string]$IcsFile,[string]$QqHistoryFile,[switch]$BuildOnly)
 $ErrorActionPreference='Stop'
-if(-not $Serial){throw 'Specify the test device with -Serial. Tests install a separate cn.xunji.cardtests package; they never open the real app data.'}
+if(-not $Serial -and -not $BuildOnly){throw 'Specify the test device with -Serial, or use -BuildOnly to compile without running. Tests install a separate cn.xunji.cardtests package; they never open the real app data.'}
 $probeRoot=$PSScriptRoot
 $buildDir=Join-Path $probeRoot 'build\store-tests'
 $toolsDir=Join-Path $SdkRoot 'build-tools\36.0.0'
@@ -8,17 +8,18 @@ $platformJar=Get-ChildItem (Join-Path $SdkRoot 'platforms') -Filter android.jar 
 $env:JAVA_HOME=Split-Path (Split-Path (Get-Command javac.exe).Source)
 function Invoke-Checked([string]$File,[string[]]$Arguments){& $File @Arguments;if($LASTEXITCODE -ne 0){throw "$File failed: $LASTEXITCODE"}}
 New-Item -ItemType Directory -Force "$buildDir\classes","$buildDir\dex" | Out-Null
-Invoke-Checked javac @('-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-classpath',$platformJar,'-d',"$buildDir\classes","$probeRoot\src\cn\xunji\probe\CardStore.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\src\cn\xunji\probe\SchedulePolicy.java","$probeRoot\src\cn\xunji\probe\EventPolicy.java","$probeRoot\src\cn\xunji\probe\TimeText.java","$probeRoot\src\cn\xunji\probe\MemoryNormalizer.java","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\src\cn\xunji\probe\CoursePolicy.java","$probeRoot\src\cn\xunji\probe\WakeupImport.java","$probeRoot\src\cn\xunji\probe\IcsImport.java","$probeRoot\tests\StoreInstrumentation.java")
+Invoke-Checked javac @('-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-classpath',$platformJar,'-d',"$buildDir\classes","$probeRoot\src\cn\xunji\probe\CardStore.java","$probeRoot\src\cn\xunji\probe\CardPolicy.java","$probeRoot\src\cn\xunji\probe\SchedulePolicy.java","$probeRoot\src\cn\xunji\probe\EventPolicy.java","$probeRoot\src\cn\xunji\probe\TimeText.java","$probeRoot\src\cn\xunji\probe\MemoryNormalizer.java","$probeRoot\src\cn\xunji\probe\ExtractionPolicy.java","$probeRoot\src\cn\xunji\probe\CoursePolicy.java","$probeRoot\src\cn\xunji\probe\WakeupImport.java","$probeRoot\src\cn\xunji\probe\IcsImport.java","$probeRoot\src\cn\xunji\probe\GrowthPolicy.java","$probeRoot\src\cn\xunji\probe\GrowthStore.java","$probeRoot\src\cn\xunji\probe\GrowthImages.java","$probeRoot\src\cn\xunji\probe\GrowthImageDraft.java","$probeRoot\tests\GrowthImageChecks.java","$probeRoot\tests\GrowthStoreChecks.java","$probeRoot\src\cn\xunji\probe\GrowthMemoryPolicy.java","$probeRoot\src\cn\xunji\probe\GrowthMemoryExtractor.java","$probeRoot\tests\GrowthMemoryChecks.java","$probeRoot\src\cn\xunji\probe\GrowthCandidateStore.java","$probeRoot\tests\GrowthCandidateChecks.java","$probeRoot\src\cn\xunji\probe\NapCatBackfill.java","$probeRoot\src\cn\xunji\probe\NapCatClient.java","$probeRoot\src\cn\xunji\probe\NapCatStore.java","$probeRoot\src\cn\xunji\probe\ApiCredential.java","$probeRoot\tests\NapCatStoreChecks.java","$probeRoot\src\cn\xunji\probe\ScheduleCompletionPolicy.java","$probeRoot\tests\ScheduleCompletionChecks.java","$probeRoot\tests\StoreInstrumentation.java")
 Invoke-Checked jar @('cf',"$buildDir\classes.jar",'-C',"$buildDir\classes",'.')
 Invoke-Checked "$toolsDir\d8.bat" @('--lib',$platformJar,'--min-api','28','--output',"$buildDir\dex","$buildDir\classes.jar")
 Invoke-Checked "$toolsDir\aapt2.exe" @('link','-o',"$buildDir\unsigned.apk",'-I',$platformJar,'--manifest',"$probeRoot\tests\AndroidManifest.xml")
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive=[System.IO.Compression.ZipFile]::Open("$buildDir\unsigned.apk",'Update')
-try{[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,"$buildDir\dex\classes.dex",'classes.dex') | Out-Null;if($IcsFile){[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Resolve-Path -LiteralPath $IcsFile).Path,'assets/private-course.ics') | Out-Null}}finally{$archive.Dispose()}
+try{[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,"$buildDir\dex\classes.dex",'classes.dex') | Out-Null;if($IcsFile){[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Resolve-Path -LiteralPath $IcsFile).Path,'assets/private-course.ics') | Out-Null};if($QqHistoryFile){[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,(Resolve-Path -LiteralPath $QqHistoryFile).Path,'assets/private-qq-history.json') | Out-Null}}finally{$archive.Dispose()}
 Invoke-Checked "$toolsDir\zipalign.exe" @('-f','4',"$buildDir\unsigned.apk","$buildDir\aligned.apk")
 if(-not(Test-Path "$probeRoot\build\test.keystore")){throw 'Run build.ps1 first to generate the local test signing key.'}
 Invoke-Checked "$toolsDir\apksigner.bat" @('sign','--ks',"$probeRoot\build\test.keystore",'--ks-pass','pass:android','--out',"$buildDir\store-tests.apk","$buildDir\aligned.apk")
 $adb=Join-Path $SdkRoot 'platform-tools\adb.exe'
+if($BuildOnly){Write-Output "SQLite test APK compiled only (not executed): $buildDir\store-tests.apk";return}
 Invoke-Checked $adb @('-s',$Serial,'install','--no-streaming','-r','-i','com.android.shell',"$buildDir\store-tests.apk")
 $output=& $adb -s $Serial shell am instrument -w cn.xunji.cardtests/cn.xunji.probe.StoreInstrumentation
 $output | Write-Output
